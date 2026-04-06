@@ -3,24 +3,26 @@
   "repName": "Galen Reich",
   "generatedAt": "2026-04-06T00:00:00.000Z",
   "companyTypes": [
+    "Data center developers and general contractors",
     "Industrial safety distributors",
     "Electrical supply resellers",
     "Construction general contractors",
     "Energy and utility companies",
-    "Food processing plants",
+    "Hyperscale cloud infrastructure builders",
     "Mining and aggregate operations",
-    "Industrial manufacturing facilities",
+    "Food processing and industrial manufacturing",
     "Environmental remediation contractors"
   ],
   "projectTypes": [
+    "Data center construction and campus buildouts",
     "Electrical infrastructure and cable management",
     "Industrial spill containment and secondary containment",
     "Construction site safety and compliance",
     "Rooftop HVAC and mechanical equipment support",
-    "Energy facility construction and maintenance",
+    "Renewable energy facility construction",
     "Hazmat and environmental compliance projects"
   ],
-  "geographies": ["WI", "IL", "MN", "CA", "IA"],
+  "geographies": ["WI", "IL", "MN", "CA", "IA", "TX", "VA", "OH"],
   "dealSizeRange": {
     "min": 500,
     "max": 146650,
@@ -37,18 +39,21 @@
     "Operations Manager"
   ],
   "triggerKeywords": [
+    "data center construction",
+    "data center campus",
+    "hyperscale data center",
     "cable support tower",
     "portable cable tower",
+    "temporary power distribution",
     "spill containment berm",
     "drive-over berm",
     "secondary containment",
     "rooftop block",
     "cable management construction",
-    "temporary power distribution",
-    "environmental compliance",
     "OSHA cable protection",
+    "environmental compliance",
     "industrial safety products",
-    "recycled rubber products"
+    "colocation facility"
   ],
   "productAffinities": [
     "Portable Electric Cable Support Tower System",
@@ -78,15 +83,17 @@
     "Iowa DAS Procurement"
   ],
   "searchQueries": [
+    "data center construction project 2026 2027 cable management",
+    "hyperscale data center campus construction awarded bid",
+    "data center general contractor cable support temporary power",
     "portable cable support tower bid RFQ 2026",
-    "spill containment berm procurement government",
-    "electrical cable management construction site safety bid",
-    "secondary containment recycled rubber products RFP",
-    "industrial safety equipment reseller distributor Midwest",
+    "spill containment berm procurement government industrial",
+    "Amazon AWS Microsoft Azure Google data center construction site",
+    "Meta QTS Vantage CyrusOne data center build 2026",
     "construction temporary power cable protection bid",
-    "rooftop equipment support block procurement",
-    "environmental compliance spill prevention products RFQ",
-    "drive-over berm hazmat containment bid",
-    "North Central USA industrial safety distributor partnership"
+    "secondary containment recycled rubber products RFP",
+    "data center construction site safety equipment cable tower",
+    "industrial safety equipment reseller distributor",
+    "drive-over berm hazmat containment bid"
   ]
 }
