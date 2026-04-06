@@ -1,5 +1,5 @@
-<%- include('layout', { body: content, title: rep.name + ' ICP', scripts: '' }); %>
-<% function content() { %>
+<% title = rep.name + ' ICP' %>
+<%- include('header') %>
 
 <div class="row mb-3">
   <div class="col">
@@ -151,4 +151,4 @@
 
 <% } %>
 
-<% } %>
+<%- include('footer') %>

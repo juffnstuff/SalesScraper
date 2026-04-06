@@ -1,5 +1,5 @@
-<%- include('layout', { body: content, title: rep.name + ' — Search', scripts: searchScripts }); %>
-<% function content() { %>
+<% title = rep.name + ' — Search' %>
+<%- include('header') %>
 
 <div class="row mb-3">
   <div class="col">
@@ -74,7 +74,5 @@
   </div>
 </div>
 
-<% } %>
-<% function searchScripts() { %>
 <script src="/js/search.js"></script>
-<% } %>
+<%- include('footer') %>

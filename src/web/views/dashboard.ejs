@@ -1,5 +1,5 @@
-<%- include('layout', { body: content, title: 'Dashboard', scripts: '' }); %>
-<% function content() { %>
+<% title = 'Dashboard' %>
+<%- include('header') %>
 
 <div class="row mb-4">
   <div class="col">
@@ -109,4 +109,4 @@
 </div>
 <% } %>
 
-<% } %>
+<%- include('footer') %>

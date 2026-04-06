@@ -1,5 +1,5 @@
-<%- include('layout', { body: content, title: 'Review Prospects', scripts: reviewScripts }); %>
-<% function content() { %>
+<% title = 'Review Prospects' %>
+<%- include('header') %>
 
 <div class="row mb-3">
   <div class="col">
@@ -46,7 +46,7 @@
           <% pending.forEach((p, i) => { %>
           <tr class="result-row <%= p.relevanceScore >= 85 ? 'score-high-border' : p.relevanceScore >= 60 ? 'score-mid-border' : '' %>">
             <td><input type="checkbox" class="prospect-check" data-index="<%= i %>"
-                 data-prospect='<%= JSON.stringify({ projectName: p.projectName, projectType: p.projectType, geography: p.geography, estimatedValue: p.estimatedValue, bidDate: p.bidDate, owner: p.owner, generalContractor: p.generalContractor, sourceUrl: p.sourceUrl, relevanceScore: p.relevanceScore, source: p.source, repId: p.repId }).replace(/'/g, "&#39;") %>'></td>
+                 data-prospect="<%= JSON.stringify({ projectName: p.projectName, projectType: p.projectType, geography: p.geography, estimatedValue: p.estimatedValue, bidDate: p.bidDate, owner: p.owner, generalContractor: p.generalContractor, sourceUrl: p.sourceUrl, relevanceScore: p.relevanceScore, source: p.source, repId: p.repId }).replace(/"/g, '&quot;') %>"></td>
             <td><span class="score-badge <%= p.relevanceScore >= 85 ? 'score-high' : p.relevanceScore >= 70 ? 'score-mid' : 'score-low' %>"><%= p.relevanceScore %></span></td>
             <td>
               <strong><%= p.projectName %></strong>
@@ -74,8 +74,6 @@
 
 <% } %>
 
-<% } %>
-<% function reviewScripts() { %>
 <script>
 function selectAll() {
   document.querySelectorAll('.prospect-check').forEach(cb => cb.checked = true);
@@ -125,11 +123,11 @@ async function pushSelected() {
   btn.innerHTML = '<i class="bi bi-cloud-upload"></i> Push Selected to HubSpot';
 
   let msg = '<div class="alert alert-success"><strong>Push complete:</strong> ';
-  if (totalCreated) msg += `${totalCreated} created. `;
-  if (totalSkipped) msg += `${totalSkipped} duplicates skipped. `;
-  if (totalFailed) msg += `${totalFailed} failed. `;
+  if (totalCreated) msg += totalCreated + ' created. ';
+  if (totalSkipped) msg += totalSkipped + ' duplicates skipped. ';
+  if (totalFailed) msg += totalFailed + ' failed. ';
   msg += '</div>';
   resultDiv.innerHTML = msg;
 }
 </script>
-<% } %>
+<%- include('footer') %>
