@@ -8,6 +8,7 @@ const SamGovSearcher = require('./sources/sam_gov');
 const StateDOTSearcher = require('./sources/state_dots');
 const BidAggregatorSearcher = require('./sources/bidnet');
 const WebSearchSource = require('./sources/web_search');
+const ConstructionNewsSearcher = require('./sources/construction_news');
 const Scorer = require('./scorer');
 
 class BidSearcher {
@@ -16,7 +17,8 @@ class BidSearcher {
       samGov: new SamGovSearcher(),
       stateDOT: new StateDOTSearcher(),
       bidAggregator: new BidAggregatorSearcher(),
-      webSearch: new WebSearchSource()
+      webSearch: new WebSearchSource(),
+      constructionNews: new ConstructionNewsSearcher()
     };
     this.scorer = new Scorer();
   }
@@ -33,7 +35,8 @@ class BidSearcher {
       this._runSource('SAM.gov', () => this.sources.samGov.search(icp)),
       this._runSource('State DOTs', () => this.sources.stateDOT.search(icp)),
       this._runSource('Bid Aggregators', () => this.sources.bidAggregator.search(icp)),
-      this._runSource('Web Search', () => this.sources.webSearch.search(icp))
+      this._runSource('Web Search', () => this.sources.webSearch.search(icp)),
+      this._runSource('Construction News', () => this.sources.constructionNews.search(icp))
     ]);
 
     for (const result of sourceResults) {

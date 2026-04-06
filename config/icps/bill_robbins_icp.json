@@ -22,7 +22,7 @@
     "Commercial rooftop HVAC installations",
     "Parking structure and traffic safety installations"
   ],
-  "geographies": ["TX", "CA", "FL", "NY", "IL"],
+  "geographies": ["TX", "CA", "FL", "NY", "IL", "GA", "NC", "VA", "PA", "NJ", "OH", "TN", "CO", "WA", "SC", "MD", "IN", "AZ", "NV", "WI", "MN", "MI", "OR", "IA", "KY", "LA", "MO", "MA", "UT", "ID", "CT"],
   "dealSizeRange": {
     "min": 1000,
     "max": 137921,
@@ -77,7 +77,9 @@
     "Dodge Data & Analytics",
     "BuildingConnected",
     "iSqFt / CMD Group",
-    "ENR project listings"
+    "ENR project listings",
+    "construction news monitoring",
+    "project award tracking"
   ],
   "searchQueries": [
     "engineered trench guard cover procurement bid 2026",
@@ -89,6 +91,36 @@
     "ENR Top 400 contractor recycled rubber products supplier",
     "data center construction trackout mat supplier bid",
     "industrial construction trench guard OSHA compliance RFQ",
-    "large-scale capital project recycled rubber products bid"
+    "large-scale capital project recycled rubber products bid",
+    "data center groundbreaking 2026 construction rooftop HVAC",
+    "Amazon AWS Meta Google data center construction awarded",
+    "highway construction project awarded 2026 trench safety",
+    "new construction project breaking ground site materials",
+    "general contractor bid awarded infrastructure 2026",
+    "major construction project groundbreaking ceremony 2026",
+    "billion dollar construction project awarded contractor",
+    "power plant construction groundbreaking rooftop mechanical",
+    "general contractor seeking subcontractors materials 2026",
+    "mega project construction awarded trench guard trackout",
+    "semiconductor fab construction groundbreaking 2026",
+    "industrial facility expansion breaking ground construction",
+    "hospital construction project awarded HVAC rooftop support",
+    "university campus construction project awarded 2026",
+    "federal infrastructure project awarded construction start",
+    "pipeline construction project awarded trench protection",
+    "commercial high-rise construction breaking ground 2026",
+    "data center campus expansion construction rooftop equipment",
+    "ENR top contractor new project awarded 2026 materials",
+    "renewable energy facility construction breaking ground",
+    "CHIPS Act semiconductor factory construction trench guard",
+    "EV battery plant construction groundbreaking rooftop HVAC",
+    "LNG terminal construction project awarded trench safety",
+    "stadium arena construction project awarded rooftop support",
+    "airport terminal expansion construction trackout mat 2026",
+    "military base construction awarded trench guard excavation",
+    "nuclear power plant construction rooftop pipe support 2026",
+    "lithium battery factory groundbreaking construction site",
+    "high rise construction project awarded rooftop mechanical",
+    "data center mechanical HVAC rooftop construction bid 2026"
   ]
 }

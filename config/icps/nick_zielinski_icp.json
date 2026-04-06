@@ -22,7 +22,7 @@
     "Pedestrian safety and crosswalk improvements",
     "Sign base and delineator installation"
   ],
-  "geographies": ["OH", "MI", "PA", "FL", "TX"],
+  "geographies": ["OH", "MI", "PA", "FL", "TX", "CA", "NY", "IL", "GA", "NC", "VA", "NJ", "TN", "CO", "WA", "SC", "MD", "IN", "AZ", "NV", "WI", "MN", "OR", "IA", "KY", "LA", "MO", "MA", "UT", "ID", "CT"],
   "dealSizeRange": {
     "min": 500,
     "max": 82478,
@@ -86,7 +86,9 @@
     "PublicPurchase.com",
     "State DOT procurement portals",
     "Municibid",
-    "GovQuote"
+    "GovQuote",
+    "construction news monitoring",
+    "project award tracking"
   ],
   "searchQueries": [
     "speed cushion traffic calming bid RFQ municipal 2026",
@@ -98,6 +100,36 @@
     "complete streets traffic calming device RFQ",
     "municipal sign base recycled rubber bid 2026",
     "city public works speed management program procurement",
-    "neighborhood traffic calming speed cushion installation bid"
+    "neighborhood traffic calming speed cushion installation bid",
+    "highway construction project awarded 2026 traffic safety",
+    "new road construction breaking ground 2026 traffic calming",
+    "state DOT bid letting awarded traffic control devices",
+    "general contractor bid awarded infrastructure road safety",
+    "major transportation project groundbreaking 2026",
+    "data center construction traffic management speed control",
+    "municipal road improvement project awarded 2026",
+    "city council approved traffic calming program 2026",
+    "FHWA federal highway project awarded traffic safety",
+    "new subdivision development breaking ground traffic control",
+    "transit authority bus rapid transit construction awarded",
+    "pedestrian safety improvement project awarded 2026",
+    "school zone improvement project breaking ground construction",
+    "parking structure construction awarded traffic safety products",
+    "complete streets project awarded construction 2026",
+    "Vision Zero city program expansion 2026 funding approved",
+    "campus construction project awarded traffic calming",
+    "residential development groundbreaking traffic management",
+    "state infrastructure bill funded road projects 2026",
+    "smart city traffic management construction awarded",
+    "new subdivision residential development speed hump 2026",
+    "city budget approved traffic calming speed cushion 2026",
+    "county road safety improvement project awarded speed hump",
+    "military base traffic calming speed cushion procurement 2026",
+    "data center campus traffic calming speed bump bollard",
+    "federal lands recreation area traffic safety products 2026",
+    "university campus traffic safety speed table bid awarded",
+    "Safe Streets for All grant awarded traffic calming 2026",
+    "IIJA infrastructure law funded traffic safety project 2026",
+    "bus rapid transit BRT construction awarded lane curb 2026"
   ]
 }

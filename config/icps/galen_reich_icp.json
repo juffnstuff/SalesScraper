@@ -22,7 +22,7 @@
     "Renewable energy facility construction",
     "Hazmat and environmental compliance projects"
   ],
-  "geographies": ["WI", "IL", "MN", "CA", "IA", "TX", "VA", "OH"],
+  "geographies": ["WI", "IL", "MN", "IA", "VA", "TX", "OH", "GA", "NV", "AZ", "NC", "OR", "CA", "FL", "NY", "PA", "NJ", "TN", "CO", "WA", "SC", "MD", "IN", "MI", "KY", "LA", "MO", "MA", "UT", "ID", "CT"],
   "dealSizeRange": {
     "min": 500,
     "max": 146650,
@@ -80,7 +80,9 @@
     "Wisconsin VendorNet",
     "Illinois BidBuy",
     "Minnesota MMB",
-    "Iowa DAS Procurement"
+    "Iowa DAS Procurement",
+    "construction news monitoring",
+    "project award tracking"
   ],
   "searchQueries": [
     "data center construction project 2026 2027 cable management",
@@ -94,6 +96,34 @@
     "secondary containment recycled rubber products RFP",
     "data center construction site safety equipment cable tower",
     "industrial safety equipment reseller distributor",
-    "drive-over berm hazmat containment bid"
+    "drive-over berm hazmat containment bid",
+    "data center groundbreaking 2026 construction",
+    "Amazon AWS Meta Google data center construction awarded",
+    "new data center breaking ground 2026 2027",
+    "highway construction project awarded 2026",
+    "general contractor bid awarded infrastructure 2026",
+    "major construction project groundbreaking ceremony",
+    "new construction project breaking ground site work",
+    "data center campus expansion announced construction start",
+    "colocation facility construction awarded general contractor",
+    "billion dollar construction project awarded 2026",
+    "industrial facility groundbreaking construction start date",
+    "power plant construction project awarded cable management",
+    "renewable energy facility construction breaking ground",
+    "data center power infrastructure construction bid letting",
+    "mega project construction awarded subcontractor materials",
+    "critical infrastructure construction project 2026 awarded",
+    "semiconductor fab construction groundbreaking 2026",
+    "AI data center construction boom 2026 site preparation",
+    "nuclear power plant construction data center energy 2026",
+    "Equinix Digital Realty Switch data center construction 2026",
+    "substation construction project awarded cable management 2026",
+    "lithium battery factory construction groundbreaking 2026",
+    "EV battery plant construction cable support containment",
+    "CHIPS Act semiconductor factory construction cable tower",
+    "data center power purchase agreement construction start",
+    "hyperscale cloud construction project bid letting 2026",
+    "industrial mega project awarded environmental containment",
+    "oil gas pipeline construction spill containment berm 2026"
   ]
 }

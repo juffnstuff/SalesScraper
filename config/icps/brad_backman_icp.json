@@ -22,7 +22,7 @@
     "Flexible bollard and delineator installations",
     "Earth anchor and ground-mount installations"
   ],
-  "geographies": ["TX", "FL", "CA", "NY", "OH"],
+  "geographies": ["TX", "FL", "CA", "NY", "OH", "IL", "GA", "NC", "VA", "PA", "NJ", "TN", "CO", "WA", "SC", "MD", "IN", "AZ", "NV", "WI", "MN", "MI", "OR", "IA", "KY", "LA", "MO", "MA", "UT", "ID", "CT"],
   "dealSizeRange": {
     "min": 100,
     "max": 31028,
@@ -84,7 +84,9 @@
     "Amazon Business / GSA Advantage",
     "PublicPurchase.com",
     "GovQuote",
-    "Cooperative purchasing (Sourcewell, OMNIA)"
+    "Cooperative purchasing (Sourcewell, OMNIA)",
+    "construction news monitoring",
+    "project award tracking"
   ],
   "searchQueries": [
     "recycled rubber sign base distributor reseller opportunity",
@@ -96,6 +98,36 @@
     "traffic safety product reseller new supplier 2026",
     "parking lot safety products e-commerce wholesale",
     "Innoplast alternative recycled rubber products distributor",
-    "shopping center parking lot safety products bid RFQ"
+    "shopping center parking lot safety products bid RFQ",
+    "data center groundbreaking 2026 parking lot safety",
+    "new construction project breaking ground parking safety",
+    "highway construction project awarded 2026 traffic products",
+    "general contractor bid awarded infrastructure safety products",
+    "major retail development groundbreaking 2026 parking",
+    "Amazon AWS Meta Google data center construction awarded",
+    "new shopping center construction breaking ground 2026",
+    "commercial development awarded parking lot construction",
+    "general contractor seeking subcontractors materials 2026",
+    "wholesale traffic safety products distributor national 2026",
+    "new warehouse construction groundbreaking parking bollards",
+    "mixed use development parking lot safety products bid",
+    "municipal parking lot renovation project awarded 2026",
+    "new hospital campus construction parking safety products",
+    "e-commerce industrial safety products wholesale opportunity",
+    "property management company parking lot upgrade 2026",
+    "new apartment complex construction parking safety bid",
+    "big box retail new store construction parking products",
+    "sign base speed bump wholesale distributor new partnership",
+    "recycled rubber products government cooperative contract 2026",
+    "data center parking lot construction safety products 2026",
+    "airport parking lot renovation sign base bollard bid 2026",
+    "EV charging station parking lot safety products bollard",
+    "new grocery store construction parking lot wheel stop 2026",
+    "military base parking lot safety products procurement 2026",
+    "school campus parking lot safety speed bump sign base",
+    "online industrial marketplace recycled rubber products 2026",
+    "Grainger Uline competitor recycled rubber parking products",
+    "traffic safety product cooperative purchasing contract 2026",
+    "private label recycled rubber speed bump manufacturer 2026"
   ]
 }

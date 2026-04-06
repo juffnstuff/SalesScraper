@@ -22,7 +22,7 @@
     "Trackout control for major construction projects",
     "Engineered trench guard installations"
   ],
-  "geographies": ["TX", "CA", "NY", "FL", "IL"],
+  "geographies": ["TX", "CA", "NY", "FL", "IL", "GA", "NC", "VA", "PA", "NJ", "OH", "TN", "CO", "WA", "SC", "MD", "IN", "AZ", "NV", "WI", "MN", "MI", "OR", "IA"],
   "dealSizeRange": {
     "min": 200,
     "max": 3157,
@@ -79,7 +79,9 @@
     "Dodge Data & Analytics",
     "BuildingConnected",
     "iSqFt / CMD Group",
-    "ENR project listings"
+    "ENR project listings",
+    "construction news monitoring",
+    "project award tracking"
   ],
   "searchQueries": [
     "sign base recycled rubber parking lot bid RFQ 2026",
@@ -91,6 +93,26 @@
     "engineered trench guard procurement bid 2026",
     "rooftop support block HVAC mechanical bid RFQ",
     "construction trackout mat national contractor bid",
-    "commercial parking facility safety products procurement"
+    "commercial parking facility safety products procurement",
+    "data center groundbreaking 2026 construction site safety",
+    "Amazon AWS Meta Google data center construction awarded",
+    "highway construction project awarded 2026 signage bollards",
+    "new construction project breaking ground parking signage",
+    "general contractor bid awarded infrastructure 2026",
+    "major construction project groundbreaking 2026 safety",
+    "general contractor seeking subcontractors materials 2026",
+    "commercial development breaking ground parking lot signs",
+    "new retail construction project awarded parking safety",
+    "mixed use development groundbreaking parking bollards signs",
+    "ENR top contractor new project awarded sign base supplier",
+    "hospital construction project awarded parking safety 2026",
+    "university campus construction parking signage bollards",
+    "warehouse distribution center construction awarded 2026",
+    "new apartment complex construction parking lot safety",
+    "government facility construction awarded sign base products",
+    "corporate campus construction breaking ground parking",
+    "billion dollar project awarded construction sign safety",
+    "industrial park development groundbreaking parking products",
+    "federal construction project awarded bollard sign base bid"
   ]
 }

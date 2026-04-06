@@ -21,7 +21,7 @@
     "Retail facility construction and renovation",
     "Stormwater and erosion control compliance"
   ],
-  "geographies": ["TX", "CA", "IL", "GA", "NC"],
+  "geographies": ["TX", "CA", "IL", "GA", "NC", "FL", "NY", "PA", "NJ", "VA", "OH", "TN", "CO", "WA", "SC", "MD", "IN", "AZ", "NV", "WI", "MN", "MI", "OR", "IA", "KY", "LA", "MO", "MA", "UT", "ID", "CT"],
   "dealSizeRange": {
     "min": 250,
     "max": 175473,
@@ -76,7 +76,9 @@
     "BuildingConnected",
     "iSqFt / CMD Group",
     "Dodge Data & Analytics",
-    "Texas SmartBuy"
+    "Texas SmartBuy",
+    "construction news monitoring",
+    "project award tracking"
   ],
   "searchQueries": [
     "construction entrance trackout control mat bid RFQ 2026",
@@ -88,6 +90,36 @@
     "Target store construction site materials supplier",
     "commercial construction sediment control products RFQ",
     "recycled rubber pipe ramp set procurement government",
-    "large-scale construction trackout mat supplier national"
+    "large-scale construction trackout mat supplier national",
+    "data center groundbreaking 2026 construction site trackout",
+    "Amazon AWS Meta Google data center construction awarded",
+    "highway construction project awarded 2026 trackout control",
+    "new construction project breaking ground site stabilization",
+    "general contractor bid awarded infrastructure 2026",
+    "major construction project groundbreaking 2026",
+    "commercial development breaking ground site work materials",
+    "billion dollar construction project awarded site materials",
+    "retail chain new store construction breaking ground 2026",
+    "warehouse distribution center construction groundbreaking",
+    "industrial park development construction awarded contractor",
+    "mega project construction site erosion sediment control",
+    "new hospital construction project awarded 2026",
+    "mixed use development groundbreaking construction start",
+    "construction site BMP compliance materials procurement 2026",
+    "large scale earthwork project awarded site stabilization",
+    "data center campus construction trackout sediment control",
+    "general contractor seeking subcontractors materials 2026",
+    "road construction project bid letting awarded 2026",
+    "new Amazon fulfillment center construction breaking ground",
+    "data center campus construction site access road trackout",
+    "CHIPS Act semiconductor factory construction site materials",
+    "solar farm construction project awarded site stabilization",
+    "EV battery plant construction groundbreaking site control",
+    "stadium arena construction project awarded site materials 2026",
+    "airport terminal expansion construction breaking ground 2026",
+    "military base construction project awarded sediment control",
+    "new manufacturing plant construction site erosion control",
+    "pipeline construction project awarded tracking pad 2026",
+    "Target Walmart Costco new store construction 2026 site work"
   ]
 }
