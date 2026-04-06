@@ -5,6 +5,7 @@
   "main": "prospect.js",
   "scripts": {
     "start": "node prospect.js --rep all",
+    "web": "node src/web/server.js",
     "dry-run": "node prospect.js --rep all --dry-run",
     "report": "node prospect.js --report"
   },
@@ -14,6 +15,11 @@
     "chalk": "^4.1.2",
     "commander": "^12.1.0",
     "dotenv": "^16.4.7",
+    "ejs": "^3.1.10",
+    "express": "^4.21.1",
+    "express-session": "^1.18.1",
+    "passport": "^0.7.0",
+    "passport-azure-ad": "^4.3.5",
     "playwright": "^1.49.1"
   },
   "engines": {

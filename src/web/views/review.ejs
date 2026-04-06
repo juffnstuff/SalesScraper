@@ -1,0 +1,135 @@
+<%- include('layout', { body: content, title: 'Review Prospects', scripts: reviewScripts }); %>
+<% function content() { %>
+
+<div class="row mb-3">
+  <div class="col">
+    <h3><i class="bi bi-check2-square"></i> Review Prospects</h3>
+    <p class="text-muted">Approve prospects to push them to HubSpot, or reject to skip.</p>
+  </div>
+</div>
+
+<% if (pending.length === 0) { %>
+  <div class="card">
+    <div class="card-body text-center py-5">
+      <i class="bi bi-inbox" style="font-size: 3rem; color: #cbd5e1;"></i>
+      <h5 class="mt-3 text-muted">No prospects to review</h5>
+      <p class="text-muted">Run a search from the <a href="/">Dashboard</a> to find new prospects.</p>
+    </div>
+  </div>
+<% } else { %>
+
+  <div class="card mb-3">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+      <span><strong><%= pending.length %></strong> prospects awaiting review</span>
+      <div>
+        <button class="btn btn-sm btn-outline-secondary" onclick="selectAll()">Select All</button>
+        <button class="btn btn-sm btn-success ms-2" onclick="pushSelected()" id="pushBtn">
+          <i class="bi bi-cloud-upload"></i> Push Selected to HubSpot
+        </button>
+      </div>
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-hover mb-0">
+        <thead class="table-light">
+          <tr>
+            <th><input type="checkbox" id="selectAllCheck" onchange="toggleAll(this)"></th>
+            <th>Score</th>
+            <th>Project</th>
+            <th>Rep</th>
+            <th>Location</th>
+            <th>Bid Date</th>
+            <th>Owner / GC</th>
+            <th>Source</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% pending.forEach((p, i) => { %>
+          <tr class="result-row <%= p.relevanceScore >= 85 ? 'score-high-border' : p.relevanceScore >= 60 ? 'score-mid-border' : '' %>">
+            <td><input type="checkbox" class="prospect-check" data-index="<%= i %>"
+                 data-prospect='<%= JSON.stringify({ projectName: p.projectName, projectType: p.projectType, geography: p.geography, estimatedValue: p.estimatedValue, bidDate: p.bidDate, owner: p.owner, generalContractor: p.generalContractor, sourceUrl: p.sourceUrl, relevanceScore: p.relevanceScore, source: p.source, repId: p.repId }).replace(/'/g, "&#39;") %>'></td>
+            <td><span class="score-badge <%= p.relevanceScore >= 85 ? 'score-high' : p.relevanceScore >= 70 ? 'score-mid' : 'score-low' %>"><%= p.relevanceScore %></span></td>
+            <td>
+              <strong><%= p.projectName %></strong>
+              <br><small class="text-muted"><%= p.projectType || '' %></small>
+            </td>
+            <td><small><%= p.repName %></small></td>
+            <td><%= [p.geography?.city, p.geography?.state].filter(Boolean).join(', ') || '—' %></td>
+            <td><%= p.bidDate || '—' %></td>
+            <td><small><%= p.owner || p.generalContractor || '—' %></small></td>
+            <td>
+              <% if (p.sourceUrl) { %>
+                <a href="<%= p.sourceUrl %>" target="_blank"><i class="bi bi-box-arrow-up-right"></i></a>
+              <% } else { %>
+                <small class="text-muted"><%= p.source || '—' %></small>
+              <% } %>
+            </td>
+          </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div id="pushResult"></div>
+
+<% } %>
+
+<% } %>
+<% function reviewScripts() { %>
+<script>
+function selectAll() {
+  document.querySelectorAll('.prospect-check').forEach(cb => cb.checked = true);
+  document.getElementById('selectAllCheck').checked = true;
+}
+function toggleAll(master) {
+  document.querySelectorAll('.prospect-check').forEach(cb => cb.checked = master.checked);
+}
+async function pushSelected() {
+  const checked = document.querySelectorAll('.prospect-check:checked');
+  if (checked.length === 0) return alert('Select at least one prospect.');
+
+  const grouped = {};
+  checked.forEach(cb => {
+    const data = JSON.parse(cb.dataset.prospect);
+    const repId = data.repId;
+    if (!grouped[repId]) grouped[repId] = [];
+    grouped[repId].push(data);
+  });
+
+  const btn = document.getElementById('pushBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Pushing...';
+
+  const resultDiv = document.getElementById('pushResult');
+  let totalCreated = 0, totalSkipped = 0, totalFailed = 0;
+
+  for (const [repId, prospects] of Object.entries(grouped)) {
+    try {
+      const res = await fetch('/api/push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repId, prospects })
+      });
+      const data = await res.json();
+      if (data.results) {
+        totalCreated += data.results.filter(r => r.action === 'created').length;
+        totalSkipped += data.results.filter(r => r.action === 'skipped').length;
+        totalFailed += data.results.filter(r => r.action === 'failed').length;
+      }
+    } catch (err) {
+      totalFailed += prospects.length;
+    }
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '<i class="bi bi-cloud-upload"></i> Push Selected to HubSpot';
+
+  let msg = '<div class="alert alert-success"><strong>Push complete:</strong> ';
+  if (totalCreated) msg += `${totalCreated} created. `;
+  if (totalSkipped) msg += `${totalSkipped} duplicates skipped. `;
+  if (totalFailed) msg += `${totalFailed} failed. `;
+  msg += '</div>';
+  resultDiv.innerHTML = msg;
+}
+</script>
+<% } %>

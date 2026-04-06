@@ -1,0 +1,112 @@
+<%- include('layout', { body: content, title: 'Dashboard', scripts: '' }); %>
+<% function content() { %>
+
+<div class="row mb-4">
+  <div class="col">
+    <h3><i class="bi bi-speedometer2"></i> Sales Rep Dashboard</h3>
+    <p class="text-muted">Select a rep to run a live prospect search or view their ICP.</p>
+  </div>
+</div>
+
+<!-- Rep Cards -->
+<div class="row g-3 mb-4">
+  <% reps.forEach(rep => { %>
+  <div class="col-md-4 col-lg-2">
+    <div class="card rep-card h-100" onclick="window.location='/search/<%= rep.id %>'">
+      <div class="card-body text-center">
+        <div class="mb-2">
+          <i class="bi bi-person-circle" style="font-size: 2.5rem; color: #64748b;"></i>
+        </div>
+        <h6 class="mb-1"><%= rep.name %></h6>
+        <small class="text-muted d-block"><%= rep.title %></small>
+        <small class="text-muted d-block mb-2"><%= rep.territory %></small>
+        <% if (rep.icp) { %>
+          <div class="mb-2">
+            <% (rep.icp.productAffinities || []).slice(0, 2).forEach(p => { %>
+              <span class="product-tag"><%= p.split('(')[0].trim().substring(0, 25) %></span>
+            <% }); %>
+          </div>
+          <div class="d-flex justify-content-around mt-2">
+            <div>
+              <div class="fw-bold text-success">$<%= (rep.icp.dealSizeRange?.sweet_spot || 0).toLocaleString() %></div>
+              <div style="font-size: 0.65rem;" class="text-muted">Sweet Spot</div>
+            </div>
+            <div>
+              <div class="fw-bold"><%= (rep.icp.geographies || []).slice(0, 3).join(', ') %></div>
+              <div style="font-size: 0.65rem;" class="text-muted">Top States</div>
+            </div>
+          </div>
+        <% } else { %>
+          <span class="badge bg-warning">No ICP</span>
+        <% } %>
+      </div>
+      <div class="card-footer bg-white text-center border-0 pt-0">
+        <a href="/search/<%= rep.id %>" class="btn btn-sm btn-outline-primary w-100">
+          <i class="bi bi-search"></i> Search Prospects
+        </a>
+      </div>
+    </div>
+  </div>
+  <% }); %>
+</div>
+
+<!-- Quick Actions -->
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-body text-center">
+        <i class="bi bi-check2-square text-success" style="font-size: 2rem;"></i>
+        <h6 class="mt-2">Review Prospects</h6>
+        <p class="text-muted small">Approve or reject found prospects before pushing to HubSpot.</p>
+        <a href="/review" class="btn btn-outline-success btn-sm">Go to Review</a>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-body text-center">
+        <i class="bi bi-bar-chart text-primary" style="font-size: 2rem;"></i>
+        <h6 class="mt-2">Run Reports</h6>
+        <p class="text-muted small">View search history, push stats, and rep performance.</p>
+        <a href="/reports" class="btn btn-outline-primary btn-sm">View Reports</a>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-body text-center">
+        <i class="bi bi-gear text-secondary" style="font-size: 2rem;"></i>
+        <h6 class="mt-2">Daily Automation</h6>
+        <p class="text-muted small">Runs automatically at 7am ET weekdays via GitHub Actions.</p>
+        <span class="badge bg-secondary">Configured</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Recent Activity -->
+<% if (recentLogs.length > 0) { %>
+<div class="card">
+  <div class="card-header bg-white"><h6 class="mb-0"><i class="bi bi-clock-history"></i> Recent Activity</h6></div>
+  <div class="card-body p-0">
+    <table class="table table-sm mb-0">
+      <thead class="table-light">
+        <tr><th>Date</th><th>Rep</th><th>Bids Found</th><th>Qualified</th><th>Pushed</th></tr>
+      </thead>
+      <tbody>
+        <% recentLogs.slice(0, 10).forEach(log => { %>
+        <tr>
+          <td><%= new Date(log.runDate).toLocaleDateString() %></td>
+          <td><%= log.repName %></td>
+          <td><%= log.searchResults?.total || 0 %></td>
+          <td><span class="badge bg-success"><%= log.searchResults?.qualified || 0 %></span></td>
+          <td><%= (log.pushResults || []).filter(p => p.action === 'created').length %></td>
+        </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+</div>
+<% } %>
+
+<% } %>

@@ -1,0 +1,67 @@
+<%- include('layout', { body: content, title: 'Reports', scripts: '' }); %>
+<% function content() { %>
+
+<div class="row mb-3">
+  <div class="col">
+    <h3><i class="bi bi-bar-chart"></i> Reports</h3>
+    <p class="text-muted">Search history and performance stats by rep.</p>
+  </div>
+</div>
+
+<!-- Per-rep stats -->
+<div class="row g-3 mb-4">
+  <% repStats.forEach(rep => { %>
+  <div class="col-md-4 col-lg-2">
+    <div class="card h-100">
+      <div class="card-body text-center">
+        <h6><%= rep.name %></h6>
+        <div class="row mt-3">
+          <div class="col-4">
+            <div class="stat-value" style="font-size: 1.5rem;"><%= rep.runCount %></div>
+            <div class="stat-label">Runs</div>
+          </div>
+          <div class="col-4">
+            <div class="stat-value text-success" style="font-size: 1.5rem;"><%= rep.totalProspects %></div>
+            <div class="stat-label">Found</div>
+          </div>
+          <div class="col-4">
+            <div class="stat-value text-primary" style="font-size: 1.5rem;"><%= rep.totalPushed %></div>
+            <div class="stat-label">Pushed</div>
+          </div>
+        </div>
+        <div class="mt-2"><small class="text-muted">Last: <%= rep.lastRun === 'Never' ? 'Never' : new Date(rep.lastRun).toLocaleDateString() %></small></div>
+      </div>
+    </div>
+  </div>
+  <% }); %>
+</div>
+
+<!-- Run History -->
+<div class="card">
+  <div class="card-header bg-white"><h6 class="mb-0"><i class="bi bi-clock-history"></i> Run History</h6></div>
+  <div class="card-body p-0">
+    <% if (logs.length === 0) { %>
+      <div class="text-center py-5 text-muted">No runs yet. Go to the Dashboard to run your first search.</div>
+    <% } else { %>
+    <table class="table table-sm mb-0">
+      <thead class="table-light">
+        <tr><th>Date</th><th>Rep</th><th>Raw Results</th><th>Qualified</th><th>Pushed</th><th>Skipped</th></tr>
+      </thead>
+      <tbody>
+        <% logs.forEach(log => { %>
+        <tr>
+          <td><%= new Date(log.runDate).toLocaleString() %></td>
+          <td><strong><%= log.repName %></strong></td>
+          <td><%= log.searchResults?.total || 0 %></td>
+          <td><span class="badge bg-success"><%= log.searchResults?.qualified || 0 %></span></td>
+          <td><%= (log.pushResults || []).filter(p => p.action === 'created').length %></td>
+          <td><%= (log.pushResults || []).filter(p => p.action === 'skipped').length %></td>
+        </tr>
+        <% }); %>
+      </tbody>
+    </table>
+    <% } %>
+  </div>
+</div>
+
+<% } %>

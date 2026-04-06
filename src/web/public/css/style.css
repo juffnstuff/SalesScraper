@@ -1,0 +1,52 @@
+/* RubberForm Prospecting Engine Styles */
+
+body { background-color: #f5f6fa; }
+
+.card { border: none; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+.card-header { border-radius: 12px 12px 0 0 !important; }
+
+/* Score badges */
+.score-high { background: #22c55e; color: white; }
+.score-mid { background: #f59e0b; color: white; }
+.score-low { background: #94a3b8; color: white; }
+
+.score-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+/* Rep cards */
+.rep-card { transition: transform 0.15s; cursor: pointer; }
+.rep-card:hover { transform: translateY(-3px); box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
+
+/* Product tags */
+.product-tag {
+  display: inline-block;
+  background: #e2e8f0;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.78rem;
+  margin: 2px;
+  color: #475569;
+}
+
+/* Result row */
+.result-row { border-left: 4px solid transparent; transition: background 0.1s; }
+.result-row:hover { background: #f8fafc; }
+.result-row.score-high-border { border-left-color: #22c55e; }
+.result-row.score-mid-border { border-left-color: #f59e0b; }
+
+/* Search loading */
+.search-spinner { display: none; }
+.searching .search-spinner { display: inline-block; }
+.searching .search-text { display: none; }
+
+/* Stat cards */
+.stat-value { font-size: 2rem; font-weight: 700; color: #1e293b; }
+.stat-label { font-size: 0.8rem; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.5px; }
+
+/* Nav active */
+.navbar-dark .nav-link.active { color: #22c55e !important; }

@@ -1,0 +1,154 @@
+<%- include('layout', { body: content, title: rep.name + ' ICP', scripts: '' }); %>
+<% function content() { %>
+
+<div class="row mb-3">
+  <div class="col">
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/">Dashboard</a></li>
+        <li class="breadcrumb-item"><a href="/search/<%= rep.id %>"><%= rep.name %></a></li>
+        <li class="breadcrumb-item active">ICP</li>
+      </ol>
+    </nav>
+    <h3><i class="bi bi-bullseye"></i> <%= rep.name %> — Ideal Customer Profile</h3>
+    <p class="text-muted">Derived from NetSuite sales data and Outlook email patterns. Generated <%= icp ? new Date(icp.generatedAt).toLocaleDateString() : 'N/A' %>.</p>
+  </div>
+</div>
+
+<% if (!icp) { %>
+  <div class="alert alert-warning">No ICP generated for this rep yet.</div>
+<% } else { %>
+
+<div class="row g-3">
+  <!-- Deal Size -->
+  <div class="col-md-3">
+    <div class="card h-100">
+      <div class="card-header bg-white"><strong><i class="bi bi-currency-dollar"></i> Deal Size</strong></div>
+      <div class="card-body text-center">
+        <div class="stat-value text-success">$<%= (icp.dealSizeRange?.sweet_spot || 0).toLocaleString() %></div>
+        <div class="stat-label">Sweet Spot</div>
+        <hr>
+        <small class="text-muted">Range: $<%= (icp.dealSizeRange?.min || 0).toLocaleString() %> — $<%= (icp.dealSizeRange?.max || 0).toLocaleString() %></small>
+      </div>
+    </div>
+  </div>
+
+  <!-- Geographies -->
+  <div class="col-md-3">
+    <div class="card h-100">
+      <div class="card-header bg-white"><strong><i class="bi bi-geo-alt"></i> Geographies</strong></div>
+      <div class="card-body">
+        <% (icp.geographies || []).forEach(g => { %>
+          <span class="badge bg-primary me-1 mb-1" style="font-size: 0.9rem;"><%= g %></span>
+        <% }); %>
+      </div>
+    </div>
+  </div>
+
+  <!-- Company Types -->
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header bg-white"><strong><i class="bi bi-building"></i> Target Company Types</strong></div>
+      <div class="card-body">
+        <ul class="mb-0">
+          <% (icp.companyTypes || []).forEach(c => { %>
+            <li><%= c %></li>
+          <% }); %>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Products -->
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header bg-white"><strong><i class="bi bi-box-seam"></i> Product Affinities</strong></div>
+      <div class="card-body">
+        <% (icp.productAffinities || []).forEach(p => { %>
+          <span class="product-tag"><%= p %></span>
+        <% }); %>
+      </div>
+    </div>
+  </div>
+
+  <!-- Buyer Titles -->
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header bg-white"><strong><i class="bi bi-person-badge"></i> Buyer Titles</strong></div>
+      <div class="card-body">
+        <% (icp.buyerTitles || []).forEach(t => { %>
+          <span class="badge bg-secondary me-1 mb-1"><%= t %></span>
+        <% }); %>
+      </div>
+    </div>
+  </div>
+
+  <!-- Trigger Keywords -->
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header bg-white"><strong><i class="bi bi-lightning"></i> Trigger Keywords</strong></div>
+      <div class="card-body">
+        <% (icp.triggerKeywords || []).forEach(k => { %>
+          <span class="badge bg-warning text-dark me-1 mb-1"><%= k %></span>
+        <% }); %>
+      </div>
+    </div>
+  </div>
+
+  <!-- Project Types -->
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header bg-white"><strong><i class="bi bi-cone-striped"></i> Project Types</strong></div>
+      <div class="card-body">
+        <ul class="mb-0">
+          <% (icp.projectTypes || []).forEach(p => { %>
+            <li><%= p %></li>
+          <% }); %>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Search Queries -->
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header bg-white"><strong><i class="bi bi-search"></i> Search Queries</strong></div>
+      <div class="card-body">
+        <ol class="mb-0 small">
+          <% (icp.searchQueries || []).forEach(q => { %>
+            <li class="mb-1"><code><%= q %></code></li>
+          <% }); %>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <!-- NAICS & Bid Sources -->
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header bg-white"><strong><i class="bi bi-database"></i> NAICS Codes</strong></div>
+      <div class="card-body">
+        <% (icp.naicsCodes || []).forEach(n => { %>
+          <span class="badge bg-dark me-1"><%= n %></span>
+        <% }); %>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header bg-white"><strong><i class="bi bi-globe"></i> Bid Sources</strong></div>
+      <div class="card-body">
+        <ul class="mb-0">
+          <% (icp.bidSources || []).forEach(b => { %>
+            <li><%= b %></li>
+          <% }); %>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+
+<% } %>
+
+<% } %>
