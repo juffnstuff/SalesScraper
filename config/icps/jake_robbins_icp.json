@@ -22,7 +22,7 @@
     "Trackout control for major construction projects",
     "Engineered trench guard installations"
   ],
-  "geographies": ["TX", "CA", "NY", "FL", "IL", "GA", "NC", "VA", "PA", "NJ", "OH", "TN", "CO", "WA", "SC", "MD", "IN", "AZ", "NV", "WI", "MN", "MI", "OR", "IA"],
+  "geographies": ["TX", "CA", "NY", "FL", "IL", "GA", "NC", "VA", "PA", "NJ", "OH", "TN", "CO", "WA", "SC", "MD", "IN", "AZ", "NV", "WI", "MN", "MI", "OR", "IA", "KY", "LA", "MO", "MA", "UT", "ID", "CT"],
   "dealSizeRange": {
     "min": 200,
     "max": 3157,
@@ -113,6 +113,16 @@
     "corporate campus construction breaking ground parking",
     "billion dollar project awarded construction sign safety",
     "industrial park development groundbreaking parking products",
-    "federal construction project awarded bollard sign base bid"
+    "federal construction project awarded bollard sign base bid",
+    "data center campus parking safety sign base bollard 2026",
+    "CHIPS Act factory construction parking safety products",
+    "EV battery plant construction parking lot signage 2026",
+    "airport construction project awarded parking safety signs",
+    "military base construction parking signage bollard bid",
+    "new medical campus construction parking lot safety 2026",
+    "Turner Skanska Whiting-Turner new project awarded 2026",
+    "national contractor recycled rubber supplier partnership",
+    "corporate headquarters construction parking safety products",
+    "logistics hub construction awarded parking signage 2026"
   ]
 }
