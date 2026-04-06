@@ -38,5 +38,25 @@
     "title": "Sales Representative",
     "territory": "National",
     "segment": "Reseller / E-Commerce"
+  },
+  {
+    "id": "bill_robbins",
+    "name": "Bill Robbins",
+    "email": "bill@rubberform.com",
+    "netsuiteId": -5,
+    "hubspotOwnerId": 96668420,
+    "title": "Owner / Sales",
+    "territory": "National",
+    "segment": "Direct / Key Accounts"
+  },
+  {
+    "id": "jake_robbins",
+    "name": "Jake Robbins",
+    "email": "jake@rubberform.com",
+    "netsuiteId": 16,
+    "hubspotOwnerId": 101144621,
+    "title": "Sales Manager",
+    "territory": "National",
+    "segment": "Direct / Construction"
   }
 ]
