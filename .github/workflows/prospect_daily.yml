@@ -1,0 +1,63 @@
+name: Daily Prospecting Run
+
+on:
+  schedule:
+    - cron: '0 12 * * 1-5'  # 7am ET (12:00 UTC) weekdays
+  workflow_dispatch:          # Allow manual trigger
+    inputs:
+      rep:
+        description: 'Rep ID to run (or "all")'
+        required: false
+        default: 'all'
+      dry_run:
+        description: 'Dry run mode'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  prospect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run Prospecting Engine
+        run: |
+          REP="${{ github.event.inputs.rep || 'all' }}"
+          DRY_RUN_FLAG=""
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            DRY_RUN_FLAG="--dry-run"
+          fi
+          node prospect.js --rep "$REP" $DRY_RUN_FLAG
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MS365_TENANT_ID: ${{ secrets.MS365_TENANT_ID }}
+          MS365_CLIENT_ID: ${{ secrets.MS365_CLIENT_ID }}
+          MS365_CLIENT_SECRET: ${{ secrets.MS365_CLIENT_SECRET }}
+          NETSUITE_ACCOUNT_ID: ${{ secrets.NETSUITE_ACCOUNT_ID }}
+          NETSUITE_CONSUMER_KEY: ${{ secrets.NETSUITE_CONSUMER_KEY }}
+          NETSUITE_CONSUMER_SECRET: ${{ secrets.NETSUITE_CONSUMER_SECRET }}
+          NETSUITE_TOKEN_ID: ${{ secrets.NETSUITE_TOKEN_ID }}
+          NETSUITE_TOKEN_SECRET: ${{ secrets.NETSUITE_TOKEN_SECRET }}
+          HUBSPOT_ACCESS_TOKEN: ${{ secrets.HUBSPOT_ACCESS_TOKEN }}
+          SELLING_API_KEY: ${{ secrets.SELLING_API_KEY }}
+          MIN_RELEVANCE_SCORE: '60'
+          DRY_RUN: 'false'
+
+      - name: Upload run logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-logs-${{ github.run_number }}
+          path: logs/runs/
+          retention-days: 90

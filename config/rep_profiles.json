@@ -1,0 +1,42 @@
+[
+  {
+    "id": "galen_reich",
+    "name": "Galen Reich",
+    "email": "galen@rubberform.com",
+    "netsuiteId": 442081,
+    "hubspotOwnerId": null,
+    "title": "Industrial Safety Product Specialist",
+    "territory": "North-Central USA",
+    "segment": "Industrial Safety / Reseller"
+  },
+  {
+    "id": "andrew_gibson",
+    "name": "Andrew Gibson",
+    "email": "andrew@rubberform.com",
+    "netsuiteId": 26,
+    "hubspotOwnerId": 101148281,
+    "title": "Sales Manager",
+    "territory": "National",
+    "segment": "Government / Direct"
+  },
+  {
+    "id": "nick_zielinski",
+    "name": "Nick Zielinski",
+    "email": "nickz@rubberform.com",
+    "netsuiteId": 150925,
+    "hubspotOwnerId": null,
+    "title": "Sales Representative",
+    "territory": "National",
+    "segment": "Direct / Construction"
+  },
+  {
+    "id": "brad_backman",
+    "name": "Brad Backman",
+    "email": "bradb@rubberform.com",
+    "netsuiteId": 443337,
+    "hubspotOwnerId": 78347095,
+    "title": "Sales Representative",
+    "territory": "National",
+    "segment": "Reseller / E-Commerce"
+  }
+]
