@@ -4,7 +4,8 @@
   "description": "AI-powered multi-rep sales prospecting engine for RubberForm Recycled Products",
   "main": "prospect.js",
   "scripts": {
-    "start": "node prospect.js --rep all",
+    "start": "node src/web/server.js",
+    "cli": "node prospect.js --rep all",
     "web": "node src/web/server.js",
     "dry-run": "node prospect.js --rep all --dry-run",
     "report": "node prospect.js --report"
@@ -20,6 +21,9 @@
     "express-session": "^1.18.1",
     "passport": "^0.7.0",
     "passport-azure-ad": "^4.3.5",
+    "playwright": "^1.49.1"
+  },
+  "optionalDependencies": {
     "playwright": "^1.49.1"
   },
   "engines": {
