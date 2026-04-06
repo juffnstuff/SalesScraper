@@ -1,0 +1,93 @@
+{
+  "repId": "andrew_gibson",
+  "repName": "Andrew Gibson",
+  "generatedAt": "2026-04-06T00:00:00.000Z",
+  "companyTypes": [
+    "Big-box retail chains",
+    "Data center construction contractors",
+    "Metal recycling and scrap yards",
+    "General contractors (commercial and industrial)",
+    "Construction materials distributors",
+    "Site development and earthwork contractors",
+    "Logistics and warehouse operators",
+    "Sustainability-focused builders"
+  ],
+  "projectTypes": [
+    "Construction site trackout and sediment control",
+    "Parking lot and loading dock infrastructure",
+    "Data center campus construction",
+    "Pipe and cable protection at road crossings",
+    "Industrial site access road maintenance",
+    "Retail facility construction and renovation",
+    "Stormwater and erosion control compliance"
+  ],
+  "geographies": ["TX", "CA", "IL", "GA", "NC"],
+  "dealSizeRange": {
+    "min": 250,
+    "max": 175473,
+    "sweet_spot": 3800
+  },
+  "buyerTitles": [
+    "Construction Project Manager",
+    "Site Superintendent",
+    "Purchasing Agent",
+    "Facilities Director",
+    "Environmental Compliance Manager",
+    "Capital Projects Manager",
+    "Procurement Manager",
+    "VP of Construction"
+  ],
+  "triggerKeywords": [
+    "construction trackout mat",
+    "vehicle tracking pad",
+    "mud tracking control",
+    "wheel stop parking lot",
+    "pipe ramp road crossing",
+    "spill containment berm",
+    "construction entrance stabilization",
+    "NPDES stormwater compliance",
+    "sediment control BMP",
+    "data center construction",
+    "recycled rubber wheel stop",
+    "forged spike installation"
+  ],
+  "productAffinities": [
+    "Trackout Control Mats (various sizes: 10x16, 12x16, 12x14)",
+    "Wheel Stops (Yellow)",
+    "Pipe Ramp Sets (4-inch and 2-inch)",
+    "Spill Containment Berms (6-inch)",
+    "Forged Spikes",
+    "Berm Risers"
+  ],
+  "naicsCodes": [
+    "236220",
+    "237310",
+    "238910",
+    "452210",
+    "423510",
+    "562119",
+    "331410",
+    "493110"
+  ],
+  "bidSources": [
+    "SAM.gov",
+    "BidNet",
+    "DemandStar",
+    "BuildingConnected",
+    "iSqFt / CMD Group",
+    "Dodge Data & Analytics",
+    "Texas SmartBuy"
+  ],
+  "searchQueries": [
+    "construction entrance trackout control mat bid RFQ 2026",
+    "vehicle tracking pad recycled rubber procurement",
+    "wheel stop parking lot yellow recycled rubber RFP",
+    "pipe ramp cable protection road crossing bid",
+    "data center construction site materials procurement",
+    "NPDES stormwater BMP trackout control bid",
+    "Target store construction site materials supplier",
+    "commercial construction sediment control products RFQ",
+    "recycled rubber pipe ramp set procurement government",
+    "large-scale construction trackout mat supplier national"
+  ]
+}

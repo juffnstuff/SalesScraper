@@ -1,0 +1,101 @@
+{
+  "repId": "brad_backman",
+  "repName": "Brad Backman",
+  "generatedAt": "2026-04-06T00:00:00.000Z",
+  "companyTypes": [
+    "Traffic safety product resellers and distributors",
+    "Online industrial product retailers",
+    "Sign and signage companies",
+    "Asphalt and paving contractors",
+    "Property management companies",
+    "Retail shopping center operators",
+    "Religious institutions and schools",
+    "Parking lot maintenance companies"
+  ],
+  "projectTypes": [
+    "Parking lot safety and traffic control installations",
+    "Shopping cart corral and retail lot infrastructure",
+    "Speed bump and speed hump installations",
+    "Sign base and signage system deployments",
+    "Reseller and private-label product supply",
+    "Commercial parking lot construction and renovation",
+    "Flexible bollard and delineator installations",
+    "Earth anchor and ground-mount installations"
+  ],
+  "geographies": ["TX", "FL", "CA", "NY", "OH"],
+  "dealSizeRange": {
+    "min": 100,
+    "max": 31028,
+    "sweet_spot": 1900
+  },
+  "buyerTitles": [
+    "Purchasing Manager",
+    "Owner / Principal",
+    "E-Commerce Product Manager",
+    "Sales Manager (reseller)",
+    "Property Manager",
+    "Facilities Coordinator",
+    "Operations Manager",
+    "Procurement Specialist"
+  ],
+  "triggerKeywords": [
+    "sign base square",
+    "shopping cart corral",
+    "cart corral bumper",
+    "wheel stop yellow",
+    "speed bump recycled rubber",
+    "speed hump",
+    "flexible bollard",
+    "sign post recycled rubber",
+    "parking lot safety products",
+    "forged spike",
+    "earth anchor",
+    "traffic safety reseller",
+    "private label speed bump",
+    "Innoplast competitor",
+    "recycled rubber parking products"
+  ],
+  "productAffinities": [
+    "Sign Bases (Square)",
+    "Shopping Cart Corral Bumps and Hardware",
+    "Wheel Stops (Yellow)",
+    "Mini Lateral Speed Bumps (2.5-inch and 3-inch, Yellow)",
+    "Sign Base Weights",
+    "Speed Hump Centers and Ends",
+    "Sign Posts (5-foot)",
+    "RK18 Speed Bumps",
+    "Flexible Bollards",
+    "Earth Anchors",
+    "Forged Spikes"
+  ],
+  "naicsCodes": [
+    "423490",
+    "423510",
+    "339950",
+    "237310",
+    "531120",
+    "452210",
+    "454110",
+    "238990"
+  ],
+  "bidSources": [
+    "BidNet",
+    "DemandStar",
+    "Amazon Business / GSA Advantage",
+    "PublicPurchase.com",
+    "GovQuote",
+    "Cooperative purchasing (Sourcewell, OMNIA)"
+  ],
+  "searchQueries": [
+    "recycled rubber sign base distributor reseller opportunity",
+    "shopping cart corral bumper supplier wholesale",
+    "speed bump speed hump reseller private label 2026",
+    "parking lot wheel stop yellow recycled rubber wholesale",
+    "flexible bollard delineator distributor partnership",
+    "sign base weight recycled rubber wholesale pricing",
+    "traffic safety product reseller new supplier 2026",
+    "parking lot safety products e-commerce wholesale",
+    "Innoplast alternative recycled rubber products distributor",
+    "shopping center parking lot safety products bid RFQ"
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "repId": "jake_robbins",
+  "repName": "Jake Robbins",
+  "generatedAt": "2026-04-06T00:00:00.000Z",
+  "companyTypes": [
+    "Large general contractors (ENR Top 400)",
+    "National construction management firms",
+    "Commercial property developers",
+    "Parking structure and facility operators",
+    "Industrial construction companies",
+    "Government facility construction contractors",
+    "Mechanical and HVAC contractors",
+    "Roofing and building envelope contractors"
+  ],
+  "projectTypes": [
+    "Commercial parking lot signage and safety",
+    "Flexible bollard and delineator installations",
+    "Speed bump installations for private lots",
+    "Sign base and wayfinding system deployments",
+    "Large contractor account management and PO fulfillment",
+    "Rooftop and trench products (inherited from Bill Robbins)",
+    "Trackout control for major construction projects",
+    "Engineered trench guard installations"
+  ],
+  "geographies": ["TX", "CA", "NY", "FL", "IL"],
+  "dealSizeRange": {
+    "min": 200,
+    "max": 3157,
+    "sweet_spot": 1300
+  },
+  "buyerTitles": [
+    "Project Manager",
+    "Purchasing Manager",
+    "Superintendent",
+    "Facilities Manager",
+    "Property Manager",
+    "Director of Procurement",
+    "Construction Manager",
+    "Safety Director"
+  ],
+  "triggerKeywords": [
+    "sign base square",
+    "flexible bollard",
+    "sign post recycled rubber",
+    "speed bump parking lot",
+    "sign base weight",
+    "parking lot safety",
+    "wayfinding sign base",
+    "engineered trench guard",
+    "rooftop support block",
+    "trackout control mat",
+    "construction site recycled rubber",
+    "Turner Construction supplier"
+  ],
+  "productAffinities": [
+    "Sign Bases (Square)",
+    "Flexible Bollards",
+    "Sign Posts (5-foot)",
+    "Mini Lateral Speed Bumps (2.5-inch)",
+    "Sign Base Weights",
+    "Engineered Trench Guards (inherited accounts)",
+    "Roof Top Support Blocks (inherited accounts)",
+    "Trackout Control Mats (inherited accounts)"
+  ],
+  "naicsCodes": [
+    "236220",
+    "236210",
+    "531120",
+    "237310",
+    "238220",
+    "238160",
+    "812930",
+    "561730"
+  ],
+  "bidSources": [
+    "SAM.gov",
+    "BidNet",
+    "DemandStar",
+    "Dodge Data & Analytics",
+    "BuildingConnected",
+    "iSqFt / CMD Group",
+    "ENR project listings"
+  ],
+  "searchQueries": [
+    "sign base recycled rubber parking lot bid RFQ 2026",
+    "flexible bollard delineator procurement government",
+    "parking lot safety signage products bid municipal",
+    "speed bump recycled rubber commercial property RFQ",
+    "large general contractor recycled rubber products supplier",
+    "Turner Construction subcontractor recycled rubber products",
+    "engineered trench guard procurement bid 2026",
+    "rooftop support block HVAC mechanical bid RFQ",
+    "construction trackout mat national contractor bid",
+    "commercial parking facility safety products procurement"
+  ]
+}

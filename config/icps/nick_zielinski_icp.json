@@ -1,0 +1,103 @@
+{
+  "repId": "nick_zielinski",
+  "repName": "Nick Zielinski",
+  "generatedAt": "2026-04-06T00:00:00.000Z",
+  "companyTypes": [
+    "Municipal governments and city public works",
+    "County highway and transportation departments",
+    "Metropolitan planning organizations",
+    "Transit authorities and bus systems",
+    "State departments of transportation",
+    "University and campus facilities departments",
+    "Homeowner associations and property management",
+    "Traffic engineering consultants"
+  ],
+  "projectTypes": [
+    "Traffic calming and speed management programs",
+    "Complete streets and Vision Zero initiatives",
+    "School zone safety improvements",
+    "Bus rapid transit lane delineation",
+    "Residential neighborhood speed reduction",
+    "Municipal parking lot construction and renovation",
+    "Pedestrian safety and crosswalk improvements",
+    "Sign base and delineator installation"
+  ],
+  "geographies": ["OH", "MI", "PA", "FL", "TX"],
+  "dealSizeRange": {
+    "min": 500,
+    "max": 82478,
+    "sweet_spot": 5800
+  },
+  "buyerTitles": [
+    "Public Works Director",
+    "City Engineer",
+    "Traffic Engineer",
+    "Transportation Planner",
+    "Municipal Purchasing Agent",
+    "Streets Superintendent",
+    "Mayor",
+    "Town Administrator",
+    "County Engineer",
+    "Transit Operations Manager"
+  ],
+  "triggerKeywords": [
+    "speed cushion",
+    "traffic calming",
+    "speed table",
+    "speed hump",
+    "rubber speed bump",
+    "engineered rubber curb",
+    "bus lane curb",
+    "bus lane delineator",
+    "sign base",
+    "Vision Zero",
+    "complete streets",
+    "school zone safety",
+    "neighborhood traffic management",
+    "traffic control device",
+    "recycled rubber curb"
+  ],
+  "productAffinities": [
+    "Speed Cushion Ramp Systems (with center extenders, corners, hardware)",
+    "Engineered Rubber Curbs (Yellow, White, Black)",
+    "Bus Lane Curbs (White and Yellow)",
+    "Speed Tables",
+    "Speed Humps",
+    "Sign Bases and Sign Posts",
+    "Engineered Traffic Curbs",
+    "Delineators",
+    "Mini Lateral Speed Bumps"
+  ],
+  "naicsCodes": [
+    "921120",
+    "237310",
+    "485111",
+    "541330",
+    "611310",
+    "531312",
+    "237110",
+    "339999"
+  ],
+  "bidSources": [
+    "SAM.gov",
+    "BidNet",
+    "DemandStar",
+    "GovBids",
+    "PublicPurchase.com",
+    "State DOT procurement portals",
+    "Municibid",
+    "GovQuote"
+  ],
+  "searchQueries": [
+    "speed cushion traffic calming bid RFQ municipal 2026",
+    "recycled rubber speed hump procurement city public works",
+    "bus lane curb delineator transit authority RFP",
+    "engineered rubber curb parking lot municipal bid",
+    "Vision Zero traffic calming products speed table bid",
+    "school zone speed reduction rubber speed cushion procurement",
+    "complete streets traffic calming device RFQ",
+    "municipal sign base recycled rubber bid 2026",
+    "city public works speed management program procurement",
+    "neighborhood traffic calming speed cushion installation bid"
+  ]
+}

@@ -1,0 +1,94 @@
+{
+  "repId": "bill_robbins",
+  "repName": "Bill Robbins",
+  "generatedAt": "2026-04-06T00:00:00.000Z",
+  "companyTypes": [
+    "Large general contractors (ENR Top 400)",
+    "Mechanical and HVAC contractors",
+    "Roofing and building envelope contractors",
+    "Utility and pipeline construction companies",
+    "Industrial construction and maintenance firms",
+    "Data center and mission-critical facility builders",
+    "Heavy civil and infrastructure contractors",
+    "Energy and power plant construction companies"
+  ],
+  "projectTypes": [
+    "Rooftop mechanical equipment support and pipe routing",
+    "Trench safety and excavation protection",
+    "Large-scale construction site trackout control",
+    "Industrial facility construction and expansion",
+    "Utility corridor and pipeline protection",
+    "High-value infrastructure and capital projects",
+    "Commercial rooftop HVAC installations",
+    "Parking structure and traffic safety installations"
+  ],
+  "geographies": ["TX", "CA", "FL", "NY", "IL"],
+  "dealSizeRange": {
+    "min": 1000,
+    "max": 137921,
+    "sweet_spot": 7700
+  },
+  "buyerTitles": [
+    "VP of Construction",
+    "Senior Project Manager",
+    "Director of Procurement",
+    "Chief Estimator",
+    "Superintendent",
+    "Safety Director",
+    "Mechanical Contractor Project Manager",
+    "Facilities Engineering Manager"
+  ],
+  "triggerKeywords": [
+    "engineered trench guard",
+    "trench cover",
+    "rooftop support block",
+    "pipe support rooftop",
+    "trackout control mat",
+    "construction trackout",
+    "flexible bollard",
+    "forged spike 48 inch",
+    "recycled rubber rooftop block",
+    "mechanical rooftop support",
+    "excavation safety cover",
+    "OSHA trench protection"
+  ],
+  "productAffinities": [
+    "Engineered Trench Guards",
+    "Roof Top Support Blocks (no unistrut)",
+    "48-inch Forged Spikes",
+    "Trackout Control Mats (12x16 and 10x14)",
+    "Flexible Bollards",
+    "Sign Bases (Square)"
+  ],
+  "naicsCodes": [
+    "236220",
+    "238220",
+    "238160",
+    "237120",
+    "237990",
+    "236210",
+    "221112",
+    "238190"
+  ],
+  "bidSources": [
+    "SAM.gov",
+    "BidNet",
+    "DemandStar",
+    "Dodge Data & Analytics",
+    "BuildingConnected",
+    "iSqFt / CMD Group",
+    "ENR project listings"
+  ],
+  "searchQueries": [
+    "engineered trench guard cover procurement bid 2026",
+    "rooftop support block recycled rubber HVAC pipe RFQ",
+    "large construction project trackout mat bid national",
+    "48 inch forged spike recycled rubber procurement",
+    "trench safety cover excavation protection bid RFP",
+    "commercial rooftop mechanical support block procurement",
+    "ENR Top 400 contractor recycled rubber products supplier",
+    "data center construction trackout mat supplier bid",
+    "industrial construction trench guard OSHA compliance RFQ",
+    "large-scale capital project recycled rubber products bid"
+  ]
+}

@@ -1,0 +1,92 @@
+{
+  "repId": "galen_reich",
+  "repName": "Galen Reich",
+  "generatedAt": "2026-04-06T00:00:00.000Z",
+  "companyTypes": [
+    "Industrial safety distributors",
+    "Electrical supply resellers",
+    "Construction general contractors",
+    "Energy and utility companies",
+    "Food processing plants",
+    "Mining and aggregate operations",
+    "Industrial manufacturing facilities",
+    "Environmental remediation contractors"
+  ],
+  "projectTypes": [
+    "Electrical infrastructure and cable management",
+    "Industrial spill containment and secondary containment",
+    "Construction site safety and compliance",
+    "Rooftop HVAC and mechanical equipment support",
+    "Energy facility construction and maintenance",
+    "Hazmat and environmental compliance projects"
+  ],
+  "geographies": ["WI", "IL", "MN", "CA", "IA"],
+  "dealSizeRange": {
+    "min": 500,
+    "max": 146650,
+    "sweet_spot": 7250
+  },
+  "buyerTitles": [
+    "Safety Manager",
+    "Purchasing Manager",
+    "Project Manager",
+    "Electrical Superintendent",
+    "Environmental Health & Safety Director",
+    "Facilities Manager",
+    "Procurement Specialist",
+    "Operations Manager"
+  ],
+  "triggerKeywords": [
+    "cable support tower",
+    "portable cable tower",
+    "spill containment berm",
+    "drive-over berm",
+    "secondary containment",
+    "rooftop block",
+    "cable management construction",
+    "temporary power distribution",
+    "environmental compliance",
+    "OSHA cable protection",
+    "industrial safety products",
+    "recycled rubber products"
+  ],
+  "productAffinities": [
+    "Portable Electric Cable Support Tower System",
+    "Heavy Duty Cable Support Towers",
+    "Spill Containment Berms (2-inch, 4-inch, 6-inch)",
+    "Drive-Over Spill Containment Berms",
+    "Mini Lateral Speed Bumps",
+    "Roof Top Support Blocks"
+  ],
+  "naicsCodes": [
+    "423610",
+    "423720",
+    "236220",
+    "237130",
+    "221112",
+    "562910",
+    "311999",
+    "212321"
+  ],
+  "bidSources": [
+    "SAM.gov",
+    "BidNet",
+    "DemandStar",
+    "Wisconsin VendorNet",
+    "Illinois BidBuy",
+    "Minnesota MMB",
+    "Iowa DAS Procurement"
+  ],
+  "searchQueries": [
+    "portable cable support tower bid RFQ 2026",
+    "spill containment berm procurement government",
+    "electrical cable management construction site safety bid",
+    "secondary containment recycled rubber products RFP",
+    "industrial safety equipment reseller distributor Midwest",
+    "construction temporary power cable protection bid",
+    "rooftop equipment support block procurement",
+    "environmental compliance spill prevention products RFQ",
+    "drive-over berm hazmat containment bid",
+    "North Central USA industrial safety distributor partnership"
+  ]
+}
