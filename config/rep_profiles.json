@@ -4,7 +4,7 @@
     "name": "Galen Reich",
     "email": "galen@rubberform.com",
     "netsuiteId": 442081,
-    "hubspotOwnerId": null,
+    "hubspotOwnerId": 1923694575,
     "title": "Industrial Safety Product Specialist",
     "territory": "North-Central USA",
     "segment": "Industrial Safety / Reseller"
@@ -24,7 +24,7 @@
     "name": "Nick Zielinski",
     "email": "nickz@rubberform.com",
     "netsuiteId": 150925,
-    "hubspotOwnerId": null,
+    "hubspotOwnerId": 539558502,
     "title": "Sales Representative",
     "territory": "National",
     "segment": "Direct / Construction"
@@ -44,7 +44,8 @@
     "name": "Bill Robbins",
     "email": "bill@rubberform.com",
     "netsuiteId": -5,
-    "hubspotOwnerId": 96668420,
+    "hubspotOwnerId": 101144621,
+    "hubspotAssignTo": "jake_robbins",
     "title": "Owner / Sales",
     "territory": "National",
     "segment": "Direct / Key Accounts"

@@ -80,11 +80,27 @@ async function main() {
     console.log(chalk.yellow.bold('\n  ⚠  DRY RUN MODE — No data will be pushed to HubSpot\n'));
   }
 
+  // Build a lookup for rep routing (e.g. Bill -> Jake)
+  const repLookup = {};
+  for (const r of allReps) { repLookup[r.id] = r; }
+
   let totalNewProspects = 0;
   const allPushResults = [];
 
   for (const rep of reps) {
     try {
+      // Resolve HubSpot assignment: if rep has hubspotAssignTo, route to that rep
+      const assignToRep = rep.hubspotAssignTo ? repLookup[rep.hubspotAssignTo] || rep : rep;
+      const hubspotRep = {
+        ...rep,
+        hubspotOwnerId: assignToRep.hubspotOwnerId
+      };
+
+      if (rep.hubspotAssignTo) {
+        const chalk = require('chalk');
+        console.log(chalk.gray(`\n  (${rep.name}'s prospects will be assigned to ${assignToRep.name} in HubSpot)`));
+      }
+
       // Step 1: Get or generate ICP
       console.log(`\n▶ Processing ${rep.name}...`);
       const icp = await icpEngine.getICP(rep, opts.refreshIcp);
@@ -141,7 +157,7 @@ async function main() {
           }
 
           for (const contact of contacts) {
-            const pushResult = await hubspot.pushProspect(contact, result, rep);
+            const pushResult = await hubspot.pushProspect(contact, result, hubspotRep);
             repPushResults.push(pushResult);
           }
         }
