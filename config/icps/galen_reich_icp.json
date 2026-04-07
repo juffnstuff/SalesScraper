@@ -22,7 +22,7 @@
     "Renewable energy facility construction",
     "Hazmat and environmental compliance projects"
   ],
-  "geographies": ["WI", "IL", "MN", "IA", "VA", "TX", "OH", "GA", "NV", "AZ", "NC", "OR", "CA", "FL", "NY", "PA", "NJ", "TN", "CO", "WA", "SC", "MD", "IN", "MI", "KY", "LA", "MO", "MA", "UT", "ID", "CT"],
+  "geographies": ["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","PR","ON","QC","BC","AB"],
   "dealSizeRange": {
     "min": 500,
     "max": 146650,

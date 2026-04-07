@@ -6,7 +6,7 @@ async function runSearch(repId) {
 
   btn.classList.add('searching');
   btn.disabled = true;
-  status.innerHTML = '<i class="bi bi-hourglass-split"></i> Searching SAM.gov, State DOTs, BidNet, and the web... This may take a minute.';
+  status.innerHTML = '<i class="bi bi-hourglass-split"></i> Searching SAM.gov, State DOTs, BidNet, Construction News, and the web... This may take 1-2 minutes.';
   area.innerHTML = '';
 
   try {
@@ -22,50 +22,43 @@ async function runSearch(repId) {
     }
 
     const results = data.results || { total: 0, qualified: 0, results: [] };
+    const allResults = results.results || [];
+    const qualified = allResults.filter(r => r.relevanceScore >= 60);
+    const unqualified = allResults.filter(r => r.relevanceScore < 60);
 
     // Summary stats
     summary.style.display = 'flex';
     document.getElementById('statTotal').textContent = results.total || 0;
-    document.getElementById('statQualified').textContent = results.qualified || 0;
-    document.getElementById('statHigh').textContent = (results.results || []).filter(r => r.relevanceScore >= 85).length;
-    document.getElementById('statMid').textContent = (results.results || []).filter(r => r.relevanceScore >= 60 && r.relevanceScore < 85).length;
+    document.getElementById('statQualified').textContent = qualified.length;
+    document.getElementById('statHigh').textContent = allResults.filter(r => r.relevanceScore >= 85).length;
+    document.getElementById('statMid').textContent = allResults.filter(r => r.relevanceScore >= 60 && r.relevanceScore < 85).length;
 
-    status.innerHTML = `<i class="bi bi-check-circle text-success"></i> Found ${results.qualified || 0} qualified prospects from ${results.total || 0} raw results.`;
+    status.innerHTML = `<i class="bi bi-check-circle text-success"></i> Found ${allResults.length} total results — ${qualified.length} qualified (score 60+), ${unqualified.length} below threshold.`;
 
-    // Render results
-    if (!results.results || results.results.length === 0) {
-      area.innerHTML = '<div class="text-muted text-center py-4">No qualified results found. Try adjusting the ICP or running again later.</div>';
+    if (allResults.length === 0) {
+      area.innerHTML = '<div class="text-muted text-center py-4">No results found. The search sources may be temporarily unavailable — try again later.</div>';
       return;
     }
 
-    let html = '<table class="table table-hover"><thead class="table-light"><tr>';
-    html += '<th>Score</th><th>Project</th><th>Type</th><th>Location</th><th>Bid Date</th><th>Owner / GC</th><th>Source</th>';
-    html += '</tr></thead><tbody>';
+    // Render qualified results
+    let html = '';
 
-    for (const r of results.results) {
-      const scoreClass = r.relevanceScore >= 85 ? 'score-high' : r.relevanceScore >= 70 ? 'score-mid' : 'score-low';
-      const borderClass = r.relevanceScore >= 85 ? 'score-high-border' : r.relevanceScore >= 70 ? 'score-mid-border' : '';
-      const geo = [r.geography?.city, r.geography?.state].filter(Boolean).join(', ') || '—';
-
-      html += `<tr class="result-row ${borderClass}">`;
-      html += `<td><span class="score-badge ${scoreClass}">${r.relevanceScore}</span></td>`;
-      html += `<td><strong>${escapeHtml(r.projectName || 'Unknown')}</strong>`;
-      if (r.scoringReasoning) html += `<br><small class="text-muted">${escapeHtml(r.scoringReasoning.substring(0, 100))}</small>`;
-      html += `</td>`;
-      html += `<td><small>${escapeHtml(r.projectType || '—')}</small></td>`;
-      html += `<td>${escapeHtml(geo)}</td>`;
-      html += `<td>${r.bidDate ? escapeHtml(r.bidDate) : '<span class="text-muted">—</span>'}</td>`;
-      html += `<td><small>${escapeHtml(r.owner || r.generalContractor || '—')}</small></td>`;
-      html += `<td>`;
-      if (r.sourceUrl) {
-        html += `<a href="${escapeHtml(r.sourceUrl)}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-box-arrow-up-right"></i></a>`;
-      } else {
-        html += `<small class="text-muted">${escapeHtml(r.source || '—')}</small>`;
-      }
-      html += `</td></tr>`;
+    if (qualified.length > 0) {
+      html += '<h6 class="mt-3 mb-2 text-success"><i class="bi bi-check-circle-fill"></i> Qualified Prospects (Score 60+)</h6>';
+      html += renderResultsTable(qualified);
     }
 
-    html += '</tbody></table>';
+    // Render unqualified results
+    if (unqualified.length > 0) {
+      html += `<div class="mt-4 mb-2 d-flex align-items-center">
+        <h6 class="text-muted mb-0"><i class="bi bi-eye"></i> Below Threshold (Score &lt; 60)</h6>
+        <button class="btn btn-sm btn-outline-secondary ms-2" onclick="toggleUnqualified()">Show/Hide</button>
+      </div>`;
+      html += `<div id="unqualifiedResults" style="display:none;">`;
+      html += renderResultsTable(unqualified, true);
+      html += '</div>';
+    }
+
     area.innerHTML = html;
 
   } catch (err) {
@@ -73,6 +66,64 @@ async function runSearch(repId) {
     btn.disabled = false;
     status.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> Error: ${err.message}</div>`;
   }
+}
+
+function renderResultsTable(results, dimmed) {
+  let html = '<table class="table table-hover table-sm"><thead class="table-light"><tr>';
+  html += '<th style="width:60px">Score</th><th>Project</th><th>Type</th><th>Location</th><th>Bid Date</th><th>Owner / GC</th><th>Value</th><th>Source</th>';
+  html += '</tr></thead><tbody>';
+
+  for (const r of results) {
+    const scoreClass = r.relevanceScore >= 85 ? 'score-high' : r.relevanceScore >= 70 ? 'score-mid' : 'score-low';
+    const borderClass = r.relevanceScore >= 85 ? 'score-high-border' : r.relevanceScore >= 70 ? 'score-mid-border' : '';
+    const geo = [r.geography?.city, r.geography?.state].filter(Boolean).join(', ') || '—';
+    const rowStyle = dimmed ? 'opacity: 0.7;' : '';
+
+    html += `<tr class="result-row ${borderClass}" style="${rowStyle}">`;
+    html += `<td><span class="score-badge ${scoreClass}">${r.relevanceScore}</span></td>`;
+    html += `<td><strong>${escapeHtml(r.projectName || 'Unknown')}</strong>`;
+    if (r.scoringReasoning) html += `<br><small class="text-muted">${escapeHtml(r.scoringReasoning.substring(0, 120))}</small>`;
+    if (r.notes && !r.scoringReasoning) html += `<br><small class="text-muted">${escapeHtml((r.notes || '').substring(0, 120))}</small>`;
+    html += `</td>`;
+    html += `<td><small>${escapeHtml(r.projectType || '—')}</small></td>`;
+    html += `<td>${escapeHtml(geo)}</td>`;
+    html += `<td>${r.bidDate ? escapeHtml(r.bidDate) : '<span class="text-muted">—</span>'}</td>`;
+
+    // Owner AND GC on separate lines if both exist
+    const owner = r.owner || '';
+    const gc = r.generalContractor || '';
+    html += '<td>';
+    if (owner) html += `<small>${escapeHtml(owner)}</small>`;
+    if (owner && gc) html += '<br>';
+    if (gc) html += `<small class="text-primary">GC: ${escapeHtml(gc)}</small>`;
+    if (!owner && !gc) html += '<span class="text-muted">—</span>';
+    html += '</td>';
+
+    // Value
+    html += '<td>';
+    if (r.estimatedValue && r.estimatedValue > 0) {
+      html += `<small class="text-success fw-bold">$${Number(r.estimatedValue).toLocaleString()}</small>`;
+    } else {
+      html += '<span class="text-muted">—</span>';
+    }
+    html += '</td>';
+
+    html += `<td>`;
+    if (r.sourceUrl) {
+      html += `<a href="${escapeHtml(r.sourceUrl)}" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-box-arrow-up-right"></i></a>`;
+    } else {
+      html += `<small class="text-muted">${escapeHtml(r.source || '—')}</small>`;
+    }
+    html += `</td></tr>`;
+  }
+
+  html += '</tbody></table>';
+  return html;
+}
+
+function toggleUnqualified() {
+  const el = document.getElementById('unqualifiedResults');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
 function escapeHtml(str) {

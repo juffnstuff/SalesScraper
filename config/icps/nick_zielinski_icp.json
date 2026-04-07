@@ -22,7 +22,7 @@
     "Pedestrian safety and crosswalk improvements",
     "Sign base and delineator installation"
   ],
-  "geographies": ["OH", "MI", "PA", "FL", "TX", "CA", "NY", "IL", "GA", "NC", "VA", "NJ", "TN", "CO", "WA", "SC", "MD", "IN", "AZ", "NV", "WI", "MN", "OR", "IA", "KY", "LA", "MO", "MA", "UT", "ID", "CT"],
+  "geographies": ["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","PR","ON","QC","BC","AB"],
   "dealSizeRange": {
     "min": 500,
     "max": 82478,

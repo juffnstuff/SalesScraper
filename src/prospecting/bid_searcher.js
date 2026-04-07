@@ -58,13 +58,18 @@ class BidSearcher {
     // Filter by minimum relevance score
     const minScore = parseInt(process.env.MIN_RELEVANCE_SCORE || '60');
     const qualified = scored.filter(r => r.relevanceScore >= minScore);
+    const unqualified = scored.filter(r => r.relevanceScore < minScore);
 
-    console.log(`  ${qualified.length} results scored ≥${minScore}`);
+    console.log(`  ${qualified.length} results scored ≥${minScore}, ${unqualified.length} below threshold`);
     return {
       total: allResults.length,
       unique: deduplicated.length,
       qualified: qualified.length,
-      results: qualified.sort((a, b) => b.relevanceScore - a.relevanceScore)
+      // Return ALL results — qualified first, then unqualified
+      results: [
+        ...qualified.sort((a, b) => b.relevanceScore - a.relevanceScore),
+        ...unqualified.sort((a, b) => b.relevanceScore - a.relevanceScore)
+      ]
     };
   }
 

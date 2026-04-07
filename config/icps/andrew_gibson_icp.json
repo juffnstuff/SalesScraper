@@ -21,7 +21,7 @@
     "Retail facility construction and renovation",
     "Stormwater and erosion control compliance"
   ],
-  "geographies": ["TX", "CA", "IL", "GA", "NC", "FL", "NY", "PA", "NJ", "VA", "OH", "TN", "CO", "WA", "SC", "MD", "IN", "AZ", "NV", "WI", "MN", "MI", "OR", "IA", "KY", "LA", "MO", "MA", "UT", "ID", "CT"],
+  "geographies": ["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","PR","ON","QC","BC","AB"],
   "dealSizeRange": {
     "min": 250,
     "max": 175473,
