@@ -1,0 +1,164 @@
+<% title = 'Sales Map' %>
+<%- include('header') %>
+
+<!-- Leaflet CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+
+<div class="row mb-3">
+  <div class="col">
+    <h3><i class="bi bi-pin-map-fill text-primary"></i> Sales & Quote Activity Map</h3>
+    <p class="text-muted mb-0">NetSuite sales orders and quotes mapped by shipping address. Live data via SuiteQL.</p>
+  </div>
+</div>
+
+<!-- Controls -->
+<div class="row mb-3">
+  <div class="col-md-9">
+    <div class="d-flex gap-2 align-items-center flex-wrap">
+      <span class="fw-bold small text-muted">LAYERS:</span>
+      <button class="btn btn-sm stage-toggle active" data-stage="shipped" style="background: #16a34a; color: white; border: 2px solid #16a34a;">
+        <i class="bi bi-truck"></i> Shipped Sales
+      </button>
+      <button class="btn btn-sm stage-toggle active" data-stage="open" style="background: #ea580c; color: white; border: 2px solid #ea580c;">
+        <i class="bi bi-file-earmark-text"></i> Open Quotes
+      </button>
+      <button class="btn btn-sm stage-toggle active" data-stage="converted" style="background: #2563eb; color: white; border: 2px solid #2563eb;">
+        <i class="bi bi-check-circle"></i> Converted Quotes
+      </button>
+      <button class="btn btn-sm stage-toggle active" data-stage="lost" style="background: #dc2626; color: white; border: 2px solid #dc2626;">
+        <i class="bi bi-x-circle"></i> Lost Quotes
+      </button>
+      <span class="mx-2 text-muted">|</span>
+      <select class="form-select form-select-sm" id="repFilter" style="width: auto;">
+        <option value="">All Reps</option>
+        <% for (const rep of reps) { %>
+          <option value="<%= rep.id %>"><%= rep.name %></option>
+        <% } %>
+      </select>
+      <select class="form-select form-select-sm" id="timeRange" style="width: auto;">
+        <option value="180">Last 6 Months</option>
+        <option value="365" selected>Last Year</option>
+        <option value="730">Last 2 Years</option>
+        <option value="0">All Time</option>
+      </select>
+    </div>
+  </div>
+  <div class="col-md-3 text-end">
+    <span class="text-muted small" id="loadingIndicator" style="display:none;">
+      <span class="spinner-border spinner-border-sm"></span> Loading from NetSuite...
+    </span>
+    <span class="text-muted small" id="cacheIndicator" style="display:none;">
+      <i class="bi bi-clock-history"></i> <span id="cacheAge"></span>
+    </span>
+  </div>
+</div>
+
+<!-- Map + Sidebar -->
+<div class="row">
+  <div class="col-lg-8">
+    <div class="card">
+      <div id="salesmap"></div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card heatmap-sidebar" id="sidebarCard">
+      <div class="card-header bg-white">
+        <h6 class="mb-0" id="sidebarTitle"><i class="bi bi-info-circle"></i> Click a marker for details</h6>
+      </div>
+      <div class="card-body p-0" id="sidebarContent">
+        <div class="text-center text-muted py-5">
+          <i class="bi bi-pin-map" style="font-size: 3rem; opacity: 0.3;"></i>
+          <p class="mt-2">Select a transaction marker on the map to view details.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Summary Stats -->
+<div class="row g-3 mt-2 mb-3">
+  <div class="col">
+    <div class="card text-center">
+      <div class="card-body py-2">
+        <div class="stat-value" id="statTotal">0</div>
+        <div class="stat-label">Total Transactions</div>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card text-center">
+      <div class="card-body py-2">
+        <div class="stat-value layer-shipped" id="statShipped">0</div>
+        <div class="stat-label">Shipped Sales</div>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card text-center">
+      <div class="card-body py-2">
+        <div class="stat-value layer-open" id="statOpen">0</div>
+        <div class="stat-label">Open Quotes</div>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card text-center">
+      <div class="card-body py-2">
+        <div class="stat-value layer-converted" id="statConverted">0</div>
+        <div class="stat-label">Converted</div>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card text-center">
+      <div class="card-body py-2">
+        <div class="stat-value layer-lost" id="statLost">0</div>
+        <div class="stat-label">Lost</div>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card text-center">
+      <div class="card-body py-2">
+        <div class="stat-value text-success" id="statRevenue">$0</div>
+        <div class="stat-label">Sales Revenue</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Legend -->
+<div class="row mb-4">
+  <div class="col">
+    <div class="card">
+      <div class="card-body py-2 d-flex gap-4 flex-wrap align-items-center">
+        <span class="fw-bold small text-muted">LEGEND:</span>
+        <div class="legend-item">
+          <span class="legend-dot" style="background: #16a34a;"></span>
+          <small><strong>Shipped Sales</strong> -- Sales orders & invoices</small>
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot" style="background: #ea580c;"></span>
+          <small><strong>Open Quotes</strong> -- Active estimates pending decision</small>
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot" style="background: #2563eb;"></span>
+          <small><strong>Converted Quotes</strong> -- Estimates that became sales orders</small>
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot" style="background: #dc2626;"></span>
+          <small><strong>Lost Quotes</strong> -- Closed or voided estimates</small>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="/js/salesmap.js"></script>
+
+<%- include('footer') %>
