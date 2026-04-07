@@ -53,30 +53,33 @@ function initMap() {
     maxZoom: 12
   });
 
-  // Light tile layer
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  // Try CARTO tiles first, fall back to no-tile map if CDN unreachable
+  const tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
     attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
     subdomains: 'abcd',
     maxZoom: 19
-  }).addTo(map);
+  });
+  tileLayer.on('tileerror', () => {});
+  tileLayer.addTo(map);
 
-  // Load US state boundaries for context
+  // US state boundaries (local GeoJSON — serves as base map when tiles unavailable)
   fetch(US_STATES_GEOJSON)
     .then(r => r.json())
     .then(geojson => {
       L.geoJSON(geojson, {
         style: {
-          fillColor: '#f1f5f9',
-          fillOpacity: 0.3,
+          fillColor: '#e2e8f0',
+          fillOpacity: 0.6,
           color: '#94a3b8',
-          weight: 1
+          weight: 1.5
         },
         onEachFeature: (feature, layer) => {
+          layer.bindTooltip(feature.properties.name, { sticky: true, className: 'state-tooltip' });
           layer.on('mouseover', function() {
-            this.setStyle({ fillOpacity: 0.5, weight: 2 });
+            this.setStyle({ fillOpacity: 0.8, weight: 2.5, color: '#64748b' });
           });
           layer.on('mouseout', function() {
-            this.setStyle({ fillOpacity: 0.3, weight: 1 });
+            this.setStyle({ fillOpacity: 0.6, weight: 1.5, color: '#94a3b8' });
           });
         }
       }).addTo(map);

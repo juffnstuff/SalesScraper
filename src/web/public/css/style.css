@@ -52,10 +52,10 @@ body { background-color: #f5f6fa; }
 .navbar-dark .nav-link.active { color: #22c55e !important; }
 
 /* Heat Map */
-#heatmap { height: 520px; border-radius: 12px; z-index: 1; }
+#heatmap { height: 520px; border-radius: 12px; z-index: 1; background: #f8fafc; }
 
 /* Sales Map */
-#salesmap { height: 520px; border-radius: 12px; z-index: 1; }
+#salesmap { height: 520px; border-radius: 12px; z-index: 1; background: #f8fafc; }
 .layer-shipped { color: #16a34a; }
 .layer-open { color: #ea580c; }
 .layer-converted { color: #2563eb; }
