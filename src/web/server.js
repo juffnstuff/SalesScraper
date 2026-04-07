@@ -274,6 +274,135 @@ app.get('/reports', ensureAuth, (req, res) => {
   });
 });
 
+// ── Heat Map page ──
+app.get('/heatmap', ensureAuth, (req, res) => {
+  res.render('heatmap', {
+    user: req.user || { name: 'Local User' },
+    title: 'Heat Map',
+    MS365_ENABLED
+  });
+});
+
+// ── API: Heat Map Data (aggregate run logs by geography + lifecycle) ──
+app.get('/api/heatmap-data', ensureAuth, (req, res) => {
+  const ConstructionNewsExpanded = require('../prospecting/sources/construction_news_expanded');
+  const days = parseInt(req.query.days) || 0; // 0 = all time
+  const cutoff = days > 0 ? new Date(Date.now() - days * 86400000) : null;
+
+  const logsDir = path.join(__dirname, '../../logs/runs');
+  if (!fs.existsSync(logsDir)) {
+    return res.json({ projects: [], summary: { total: 0, construction: 0, parking_industrial: 0, municipal: 0 }, byState: {} });
+  }
+
+  const files = fs.readdirSync(logsDir).filter(f => f.endsWith('.json'));
+  const projects = [];
+  const seen = new Set();
+
+  for (const file of files) {
+    try {
+      const data = JSON.parse(fs.readFileSync(path.join(logsDir, file), 'utf8'));
+      if (cutoff && new Date(data.runDate) < cutoff) continue;
+
+      const results = data.searchResults?.results || [];
+      for (const r of results) {
+        const state = r.geography?.state;
+        if (!state) continue;
+
+        // Deduplicate by project name + state
+        const key = ((r.projectName || '') + state).toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 60);
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        const stage = r.lifecycleStage || ConstructionNewsExpanded.classifyLifecycleStage(r);
+        projects.push({
+          projectName: r.projectName || 'Unknown',
+          projectType: r.projectType || '',
+          city: r.geography?.city || '',
+          state: state,
+          estimatedValue: r.estimatedValue || 0,
+          bidDate: r.bidDate || '',
+          owner: r.owner || '',
+          generalContractor: r.generalContractor || '',
+          sourceUrl: r.sourceUrl || '',
+          source: r.source || '',
+          relevanceScore: r.relevanceScore || 0,
+          lifecycleStage: stage,
+          notes: (r.notes || '').substring(0, 200)
+        });
+      }
+    } catch (e) { /* skip bad files */ }
+  }
+
+  // Build summary
+  const summary = {
+    total: projects.length,
+    construction: projects.filter(p => p.lifecycleStage === 'construction').length,
+    parking_industrial: projects.filter(p => p.lifecycleStage === 'parking_industrial').length,
+    municipal: projects.filter(p => p.lifecycleStage === 'municipal').length
+  };
+
+  const byState = {};
+  for (const p of projects) {
+    byState[p.state] = (byState[p.state] || 0) + 1;
+  }
+
+  res.json({ projects, summary, byState });
+});
+
+// ── API: Heat Map Scan (live news search) ──
+app.post('/api/heatmap-scan', ensureAuth, async (req, res) => {
+  try {
+    const ConstructionNewsExpanded = require('../prospecting/sources/construction_news_expanded');
+    const searcher = new ConstructionNewsExpanded();
+
+    // Generic national ICP for broad scanning
+    const scanIcp = {
+      geographies: ['AL','AK','AZ','AR','CA','CO','CT','DE','DC','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'],
+      productAffinities: [
+        'Cable Support Towers', 'Trackout Mats', 'Speed Cushions',
+        'Wheel Stops', 'Sign Bases', 'Rubber Curbs', 'Flexible Bollards',
+        'Speed Bumps', 'Trench Guards', 'Spill Containment Berms'
+      ],
+      triggerKeywords: [
+        'construction', 'traffic calming', 'parking lot', 'speed bump',
+        'data center', 'highway', 'warehouse', 'Vision Zero'
+      ]
+    };
+
+    const results = await searcher.search(scanIcp);
+
+    // Save scan results to a log file
+    const Reporter = require('../ui/reporter');
+    Reporter.saveRunLog('heatmap_scan', {
+      repName: 'Heat Map Scan',
+      icp: scanIcp,
+      searchResults: { total: results.length, unique: results.length, qualified: results.length, results },
+      pushResults: []
+    });
+
+    // Classify and return
+    const projects = results.map(r => ({
+      projectName: r.projectName || 'Unknown',
+      projectType: r.projectType || '',
+      city: r.geography?.city || '',
+      state: r.geography?.state || '',
+      estimatedValue: r.estimatedValue || 0,
+      bidDate: r.bidDate || '',
+      owner: r.owner || '',
+      generalContractor: r.generalContractor || '',
+      sourceUrl: r.sourceUrl || '',
+      source: r.source || '',
+      relevanceScore: r.relevanceScore || 0,
+      lifecycleStage: r.lifecycleStage || ConstructionNewsExpanded.classifyLifecycleStage(r),
+      notes: (r.notes || '').substring(0, 200)
+    }));
+
+    res.json({ success: true, projects, count: projects.length });
+  } catch (error) {
+    res.json({ success: false, error: error.message, projects: [] });
+  }
+});
+
 // ── ICP detail ──
 app.get('/icp/:repId', ensureAuth, (req, res) => {
   const reps = loadReps();

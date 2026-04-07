@@ -1,0 +1,317 @@
+/**
+ * Construction News Expanded Searcher
+ * Extends construction news coverage with 6 additional categories
+ * covering the full RubberForm product lifecycle:
+ *   - Construction starts → trackout mats, cable towers, trench guards
+ *   - Parking & industrial → wheel stops, sign bases, bollards, speed bumps
+ *   - Municipal traffic calming → speed cushions, rubber curbs, delineators
+ *
+ * Also exports a static lifecycle classifier used by the heatmap data API.
+ */
+
+const Anthropic = require('@anthropic-ai/sdk');
+
+// Lifecycle stage keyword classification
+const LIFECYCLE_KEYWORDS = {
+  construction: [
+    'data center', 'highway', 'bridge', 'groundbreaking', 'site work',
+    'infrastructure', 'dot ', 'road construction', 'semiconductor', 'power plant',
+    'warehouse', 'distribution center', 'campus', 'solar', 'battery',
+    'ev charging', 'hospital', 'medical center', 'university', 'fab ',
+    'breaking ground', 'construction start', 'awarded contractor',
+    'general contractor', 'site preparation', 'foundation', 'excavation',
+    'renewable energy', 'wind farm', 'substation', 'transmission line'
+  ],
+  parking_industrial: [
+    'parking', 'paving', 'commercial', 'retail', 'sign base', 'wheel stop',
+    'bollard', 'speed bump', 'industrial park', 'resurfacing', 'striping',
+    'parking garage', 'parking lot', 'asphalt', 'shopping center',
+    'mixed-use', 'hotel', 'office building', 'property management',
+    'loading dock', 'curb', 'pavement marking'
+  ],
+  municipal: [
+    'traffic calming', 'speed cushion', 'vision zero', 'safe streets',
+    'municipal', 'pedestrian safety', 'school zone', 'crosswalk',
+    'speed hump', 'bicycle', 'complete streets', 'traffic safety',
+    'city council', 'neighborhood safety', 'speed reduction',
+    'speed limit', 'traffic study', 'walk', 'bike lane',
+    'road diet', 'protected intersection', 'curb extension'
+  ]
+};
+
+class ConstructionNewsExpanded {
+  constructor() {
+    this.anthropic = new Anthropic();
+  }
+
+  /**
+   * Classify a project result into a lifecycle stage.
+   * Exported as static so the heatmap API can reuse it.
+   */
+  static classifyLifecycleStage(result) {
+    const text = [
+      result.projectName || '',
+      result.projectType || '',
+      result.notes || '',
+      result.owner || '',
+      result.generalContractor || ''
+    ].join(' ').toLowerCase();
+
+    // Check municipal first (most specific)
+    for (const kw of LIFECYCLE_KEYWORDS.municipal) {
+      if (text.includes(kw)) return 'municipal';
+    }
+    // Then parking/industrial
+    for (const kw of LIFECYCLE_KEYWORDS.parking_industrial) {
+      if (text.includes(kw)) return 'parking_industrial';
+    }
+    // Then construction (broadest)
+    for (const kw of LIFECYCLE_KEYWORDS.construction) {
+      if (text.includes(kw)) return 'construction';
+    }
+    // Default
+    return 'construction';
+  }
+
+  /**
+   * Search all expanded categories for construction news
+   */
+  async search(icp) {
+    const results = [];
+
+    // Category 1: Parking lot & garage construction
+    const parkingResults = await this._searchCategory(
+      'parking construction',
+      [
+        'parking garage construction groundbreaking 2026',
+        'parking lot resurfacing paving project awarded 2026',
+        'new parking structure construction start',
+        'municipal parking facility construction bid',
+        'commercial parking lot construction contractor awarded',
+        'parking deck expansion project breaking ground'
+      ],
+      icp,
+      'parking_industrial'
+    );
+    results.push(...parkingResults);
+
+    // Category 2: Municipal traffic calming / Vision Zero
+    const municipalResults = await this._searchCategory(
+      'municipal traffic calming',
+      [
+        'Vision Zero traffic calming project 2026 city',
+        'speed cushion speed hump installation project municipal',
+        'school zone safety improvement construction 2026',
+        'complete streets project construction awarded',
+        'pedestrian safety improvement project bid 2026',
+        'traffic calming neighborhood speed reduction project'
+      ],
+      icp,
+      'municipal'
+    );
+    results.push(...municipalResults);
+
+    // Category 3: Warehouse & logistics centers
+    const warehouseResults = await this._searchCategory(
+      'warehouse construction',
+      [
+        'Amazon distribution center construction groundbreaking 2026',
+        'warehouse logistics facility construction awarded',
+        'FedEx UPS distribution hub construction start 2026',
+        'cold storage warehouse construction breaking ground',
+        'fulfillment center construction project awarded contractor',
+        'industrial warehouse development construction 2026'
+      ],
+      icp,
+      'construction'
+    );
+    results.push(...warehouseResults);
+
+    // Category 4: Retail & commercial development
+    const retailResults = await this._searchCategory(
+      'commercial development',
+      [
+        'shopping center construction groundbreaking 2026',
+        'mixed-use development construction start 2026',
+        'hotel construction project breaking ground',
+        'retail center development construction awarded',
+        'commercial office building construction 2026 contractor'
+      ],
+      icp,
+      'parking_industrial'
+    );
+    results.push(...retailResults);
+
+    // Category 5: University & hospital campus
+    const campusResults = await this._searchCategory(
+      'campus construction',
+      [
+        'university campus construction project 2026',
+        'hospital medical center expansion construction awarded',
+        'college dormitory construction groundbreaking',
+        'medical campus construction breaking ground 2026',
+        'university research building construction start'
+      ],
+      icp,
+      'construction'
+    );
+    results.push(...campusResults);
+
+    // Category 6: Renewable energy & EV infrastructure
+    const energyResults = await this._searchCategory(
+      'energy infrastructure',
+      [
+        'EV charging station construction project 2026',
+        'battery manufacturing plant construction groundbreaking',
+        'solar farm construction awarded contractor 2026',
+        'electric vehicle infrastructure construction project',
+        'battery gigafactory construction breaking ground'
+      ],
+      icp,
+      'construction'
+    );
+    results.push(...energyResults);
+
+    return this._deduplicateResults(results);
+  }
+
+  /**
+   * Search a category of construction news
+   */
+  async _searchCategory(category, queries, icp, defaultStage) {
+    const results = [];
+
+    for (const query of queries) {
+      try {
+        console.log(`    [News+] ${query}`);
+        const found = await this._runNewsSearch(query, category, icp, defaultStage);
+        results.push(...found);
+      } catch (error) {
+        console.warn(`    [News+] Failed: ${error.message}`);
+      }
+      // Rate limit
+      await new Promise(r => setTimeout(r, 800));
+    }
+
+    return results;
+  }
+
+  /**
+   * Run a single news-focused web search using Claude
+   */
+  async _runNewsSearch(query, category, icp, defaultStage) {
+    try {
+      const response = await this.anthropic.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 3000,
+        tools: [{
+          type: 'web_search_20250305',
+          name: 'web_search',
+          max_uses: 3
+        }],
+        messages: [{
+          role: 'user',
+          content: `You are a construction industry research assistant for RubberForm Recycled Products, a manufacturer of recycled rubber safety products (cable support towers, trackout mats, speed bumps, spill containment berms, wheel stops, bollards, sign bases, rubber curbs, speed cushions, delineators, etc.).
+
+Search for: ${query}
+
+Find REAL, CURRENT construction projects in the United States that are:
+- Recently awarded or breaking ground
+- In the planning/bidding phase
+- Major projects where contractors or municipalities would need safety products
+
+For EACH project found, I need:
+1. The actual project name
+2. The general contractor, developer, or municipality
+3. The specific location (city, state)
+4. Estimated project value if mentioned
+5. Any bid deadlines or construction start dates
+6. The source URL where you found this
+
+Focus on ACTIONABLE opportunities — real projects with real companies or agencies we can contact.
+
+Return a JSON array of objects:
+[{
+  "projectName": "...",
+  "projectType": "...",
+  "developer": "...",
+  "generalContractor": "...",
+  "city": "...",
+  "state": "...",
+  "estimatedValue": "...",
+  "timeline": "...",
+  "sourceUrl": "...",
+  "notes": "why this is relevant"
+}]
+
+If nothing relevant found, return []. Return ONLY the JSON array.`
+        }]
+      });
+
+      const textBlock = response.content.find(b => b.type === 'text');
+      if (!textBlock) return [];
+
+      let text = textBlock.text.trim();
+      if (text.startsWith('```')) {
+        text = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+      }
+
+      try {
+        const parsed = JSON.parse(text);
+        return (Array.isArray(parsed) ? parsed : []).map(r => {
+          const result = {
+            projectName: r.projectName || 'Unknown Project',
+            projectType: r.projectType || category,
+            geography: {
+              city: r.city || '',
+              state: r.state || '',
+              county: ''
+            },
+            estimatedValue: this._parseValue(r.estimatedValue),
+            bidDate: r.timeline || r.bidDate || '',
+            awardDate: '',
+            owner: r.developer || '',
+            generalContractor: r.generalContractor || '',
+            sourceUrl: r.sourceUrl || '',
+            source: 'construction_news_expanded',
+            relevanceScore: 0,
+            matchedIcpFields: ['construction_news_expanded', category],
+            notes: r.notes || `Found via expanded news: "${query}"`
+          };
+          // Classify lifecycle stage
+          result.lifecycleStage = ConstructionNewsExpanded.classifyLifecycleStage(result) || defaultStage;
+          return result;
+        });
+      } catch (e) {
+        return [];
+      }
+    } catch (error) {
+      return [];
+    }
+  }
+
+  _parseValue(val) {
+    if (!val) return 0;
+    if (typeof val === 'number') return val;
+    const str = String(val).replace(/[^0-9.bmkBMK]/g, '');
+    let num = parseFloat(str);
+    if (isNaN(num)) return 0;
+    const upper = String(val).toUpperCase();
+    if (upper.includes('B')) num *= 1000000000;
+    else if (upper.includes('M')) num *= 1000000;
+    else if (upper.includes('K')) num *= 1000;
+    return num;
+  }
+
+  _deduplicateResults(results) {
+    const seen = new Set();
+    return results.filter(r => {
+      const key = (r.projectName + r.geography?.state).toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 60);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+}
+
+module.exports = ConstructionNewsExpanded;

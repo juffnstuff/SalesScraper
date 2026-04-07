@@ -9,6 +9,7 @@ const StateDOTSearcher = require('./sources/state_dots');
 const BidAggregatorSearcher = require('./sources/bidnet');
 const WebSearchSource = require('./sources/web_search');
 const ConstructionNewsSearcher = require('./sources/construction_news');
+const ConstructionNewsExpanded = require('./sources/construction_news_expanded');
 const Scorer = require('./scorer');
 
 class BidSearcher {
@@ -18,7 +19,8 @@ class BidSearcher {
       stateDOT: new StateDOTSearcher(),
       bidAggregator: new BidAggregatorSearcher(),
       webSearch: new WebSearchSource(),
-      constructionNews: new ConstructionNewsSearcher()
+      constructionNews: new ConstructionNewsSearcher(),
+      constructionNewsExpanded: new ConstructionNewsExpanded()
     };
     this.scorer = new Scorer();
   }
@@ -36,7 +38,8 @@ class BidSearcher {
       this._runSource('State DOTs', () => this.sources.stateDOT.search(icp)),
       this._runSource('Bid Aggregators', () => this.sources.bidAggregator.search(icp)),
       this._runSource('Web Search', () => this.sources.webSearch.search(icp)),
-      this._runSource('Construction News', () => this.sources.constructionNews.search(icp))
+      this._runSource('Construction News', () => this.sources.constructionNews.search(icp)),
+      this._runSource('Construction News (Expanded)', () => this.sources.constructionNewsExpanded.search(icp))
     ]);
 
     for (const result of sourceResults) {

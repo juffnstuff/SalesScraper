@@ -50,3 +50,17 @@ body { background-color: #f5f6fa; }
 
 /* Nav active */
 .navbar-dark .nav-link.active { color: #22c55e !important; }
+
+/* Heat Map */
+#heatmap { height: 520px; border-radius: 12px; z-index: 1; }
+.heatmap-sidebar { max-height: 520px; overflow-y: auto; }
+.stage-construction { color: #ea580c; }
+.stage-parking { color: #2563eb; }
+.stage-municipal { color: #16a34a; }
+.stage-toggle { transition: opacity 0.2s; }
+.stage-toggle:hover { opacity: 0.85 !important; }
+.legend-item { display: flex; align-items: center; gap: 6px; }
+.legend-dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.scan-spinner { display: none; }
+.scanning .scan-spinner { display: inline-block; }
+.scanning .scan-text { display: none; }
