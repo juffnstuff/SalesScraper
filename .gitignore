@@ -1,6 +1,7 @@
 node_modules/
 .env
 logs/runs/*.json
+data/netsuite_cache/*.json
 # config/icps/*.json  — tracking ICPs in git for visibility
 *.log
 .DS_Store

@@ -103,6 +103,15 @@ function loadRunLogs(repId) {
     .filter(Boolean);
 }
 
+// ── Estimate status classifier ──
+function classifyEstimateStatus(statusDisplay) {
+  if (!statusDisplay) return 'open';
+  const s = statusDisplay.toLowerCase();
+  if (s.includes('processed') || s.includes('closed won')) return 'converted';
+  if (s.includes('closed') || s.includes('expired') || s.includes('voided') || s.includes('declined')) return 'lost';
+  return 'open';
+}
+
 // ── Auth routes ──
 app.get('/login', (req, res) => {
   if (!MS365_ENABLED) return res.redirect('/');
@@ -285,104 +294,107 @@ app.get('/salesmap', ensureAuth, (req, res) => {
   });
 });
 
-// ── API: Sales Map Data (live SuiteQL from NetSuite) ──
-const salesMapCache = {};
-const SALESMAP_CACHE_TTL = 15 * 60 * 1000; // 15 minutes
-
-app.get('/api/salesmap-data', ensureAuth, async (req, res) => {
+// ── API: Sales Map Data (reads cached NetSuite data from data/netsuite_cache/) ──
+app.get('/api/salesmap-data', ensureAuth, (req, res) => {
   const days = parseInt(req.query.days) || 730;
   const repId = req.query.repId || '';
-  const cacheKey = `${repId || 'all'}_${days}`;
+  const reps = loadReps();
 
-  // Check cache
-  if (salesMapCache[cacheKey] && (Date.now() - salesMapCache[cacheKey].ts < SALESMAP_CACHE_TTL)) {
-    return res.json(salesMapCache[cacheKey].data);
+  // Build rep lookup for display names
+  const repLookup = {};
+  for (const r of reps) {
+    repLookup[r.netsuiteId] = r.name;
   }
 
+  // Resolve repId string to NetSuite employee ID
+  let netsuiteRepId = null;
+  if (repId) {
+    const rep = reps.find(r => r.id === repId);
+    if (rep) netsuiteRepId = rep.netsuiteId;
+  }
+
+  // Date cutoff
+  const cutoff = days > 0 ? new Date(Date.now() - days * 86400000) : null;
+
+  const cacheDir = path.join(__dirname, '../../data/netsuite_cache');
+  const transactions = [];
+
+  // Read sales cache
   try {
-    const NetSuiteClient = require('../discovery/netsuite_client');
-    const ns = new NetSuiteClient();
-    const reps = loadReps();
-
-    // Resolve repId string (e.g. "galen_reich") to NetSuite employee ID
-    let netsuiteRepId = null;
-    if (repId) {
-      const rep = reps.find(r => r.id === repId);
-      if (rep) netsuiteRepId = rep.netsuiteId;
+    const salesPath = path.join(cacheDir, 'sales.json');
+    if (fs.existsSync(salesPath)) {
+      const salesData = JSON.parse(fs.readFileSync(salesPath, 'utf8'));
+      for (const row of (salesData.transactions || [])) {
+        if (netsuiteRepId && row.employee !== netsuiteRepId) continue;
+        if (cutoff && new Date(row.trandate) < cutoff) continue;
+        transactions.push({
+          id: row.id,
+          tranId: row.tranid,
+          type: 'SalesOrd',
+          layer: 'shipped',
+          date: row.trandate,
+          total: parseFloat(row.total) || 0,
+          customerName: row.customername,
+          memo: row.memo || '',
+          city: row.shipcity || '',
+          state: row.shipstate || '',
+          zip: row.shipzip || '',
+          repName: repLookup[row.employee] || ''
+        });
+      }
     }
+  } catch (e) { console.error('Error reading sales cache:', e.message); }
 
-    const queryOpts = { days, repId: netsuiteRepId };
-
-    // Run both queries in parallel
-    const [salesRows, estimateRows] = await Promise.all([
-      ns.getSalesMapSales(queryOpts),
-      ns.getSalesMapEstimates(queryOpts)
-    ]);
-
-    // Build rep lookup for display names
-    const repLookup = {};
-    for (const r of reps) {
-      repLookup[r.netsuiteId] = r.name;
+  // Read estimates cache
+  try {
+    const estPath = path.join(cacheDir, 'estimates.json');
+    if (fs.existsSync(estPath)) {
+      const estData = JSON.parse(fs.readFileSync(estPath, 'utf8'));
+      for (const row of (estData.transactions || [])) {
+        if (netsuiteRepId && row.employee !== netsuiteRepId) continue;
+        if (cutoff && new Date(row.trandate) < cutoff) continue;
+        const statusDisplay = row.statusdisplay || '';
+        const layer = classifyEstimateStatus(statusDisplay);
+        transactions.push({
+          id: row.id,
+          tranId: row.tranid,
+          type: 'Estimate',
+          layer,
+          date: row.trandate,
+          total: parseFloat(row.total) || 0,
+          customerName: row.customername,
+          memo: row.memo || '',
+          city: row.shipcity || '',
+          state: row.shipstate || '',
+          zip: row.shipzip || '',
+          repName: repLookup[row.employee] || '',
+          probability: row.probability || null,
+          status: statusDisplay
+        });
+      }
     }
+  } catch (e) { console.error('Error reading estimates cache:', e.message); }
 
-    // Map sales rows
-    const transactions = salesRows.map(row => ({
-      id: row.id,
-      tranId: row.tranid || row.tranId,
-      type: 'SalesOrd',
-      layer: 'shipped',
-      date: row.trandate || row.tranDate,
-      total: parseFloat(row.total) || 0,
-      customerName: row.customername || row.customerName,
-      memo: row.memo || '',
-      city: row.shipcity || row.shipCity || '',
-      state: row.shipstate || row.shipState || '',
-      zip: row.shipzip || row.shipZip || '',
-      repName: repLookup[row.employee] || ''
-    }));
+  const summary = {
+    total: transactions.length,
+    shipped: transactions.filter(t => t.layer === 'shipped').length,
+    open: transactions.filter(t => t.layer === 'open').length,
+    converted: transactions.filter(t => t.layer === 'converted').length,
+    lost: transactions.filter(t => t.layer === 'lost').length,
+    totalRevenue: transactions.filter(t => t.layer === 'shipped').reduce((s, t) => s + t.total, 0),
+    totalQuoteValue: transactions.filter(t => t.layer === 'open').reduce((s, t) => s + t.total, 0)
+  };
 
-    // Map and classify estimate rows
-    for (const row of estimateRows) {
-      const statusDisplay = row.statusdisplay || row.statusDisplay || '';
-      const layer = NetSuiteClient.classifyEstimateStatus(statusDisplay);
-      transactions.push({
-        id: row.id,
-        tranId: row.tranid || row.tranId,
-        type: 'Estimate',
-        layer,
-        date: row.trandate || row.tranDate,
-        total: parseFloat(row.total) || 0,
-        customerName: row.customername || row.customerName,
-        memo: row.memo || '',
-        city: row.shipcity || row.shipCity || '',
-        state: row.shipstate || row.shipState || '',
-        zip: row.shipzip || row.shipZip || '',
-        repName: repLookup[row.employee] || '',
-        probability: row.probability || null,
-        status: statusDisplay
-      });
+  // Read sync timestamp
+  try {
+    const salesPath = path.join(cacheDir, 'sales.json');
+    if (fs.existsSync(salesPath)) {
+      const d = JSON.parse(fs.readFileSync(salesPath, 'utf8'));
+      summary.syncedAt = d.syncedAt;
     }
+  } catch (e) { /* skip */ }
 
-    const summary = {
-      total: transactions.length,
-      shipped: transactions.filter(t => t.layer === 'shipped').length,
-      open: transactions.filter(t => t.layer === 'open').length,
-      converted: transactions.filter(t => t.layer === 'converted').length,
-      lost: transactions.filter(t => t.layer === 'lost').length,
-      totalRevenue: transactions.filter(t => t.layer === 'shipped').reduce((s, t) => s + t.total, 0),
-      totalQuoteValue: transactions.filter(t => t.layer === 'open').reduce((s, t) => s + t.total, 0)
-    };
-
-    const responseData = { transactions, summary };
-
-    // Cache result
-    salesMapCache[cacheKey] = { ts: Date.now(), data: responseData };
-
-    res.json(responseData);
-  } catch (error) {
-    console.error('Sales map data error:', error.message);
-    res.json({ transactions: [], summary: { total: 0, shipped: 0, open: 0, converted: 0, lost: 0, totalRevenue: 0, totalQuoteValue: 0 }, error: error.message });
-  }
+  res.json({ transactions, summary });
 });
 
 // ── Heat Map page ──
