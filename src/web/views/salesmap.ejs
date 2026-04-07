@@ -1,10 +1,10 @@
 <% title = 'Sales Map' %>
 <%- include('header') %>
 
-<!-- Leaflet CSS -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+<!-- Leaflet CSS (local) -->
+<link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
+<link rel="stylesheet" href="/vendor/leaflet.markercluster/MarkerCluster.css" />
+<link rel="stylesheet" href="/vendor/leaflet.markercluster/MarkerCluster.Default.css" />
 
 <div class="row mb-3">
   <div class="col">
@@ -156,9 +156,9 @@
   </div>
 </div>
 
-<!-- Leaflet JS -->
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<!-- Leaflet JS (local) -->
+<script src="/vendor/leaflet/leaflet.js"></script>
+<script src="/vendor/leaflet.markercluster/leaflet.markercluster.js"></script>
 <script src="/js/salesmap.js"></script>
 
 <%- include('footer') %>

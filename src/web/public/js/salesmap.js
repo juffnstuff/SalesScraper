@@ -26,7 +26,7 @@ let markerLayers = {};
 let activeLayers = { shipped: true, open: true, converted: true, lost: true };
 
 // US state boundary GeoJSON
-const US_STATES_GEOJSON = 'https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json';
+const US_STATES_GEOJSON = '/data/us-states.json';
 
 // -- Initialize --
 document.addEventListener('DOMContentLoaded', async () => {

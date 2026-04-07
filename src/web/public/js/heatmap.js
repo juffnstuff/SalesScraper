@@ -22,7 +22,7 @@ let markerLayers = {
 let activeStages = { construction: true, parking_industrial: true, municipal: true };
 
 // US state boundary GeoJSON URL (simplified, free)
-const US_STATES_GEOJSON = 'https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json';
+const US_STATES_GEOJSON = '/data/us-states.json';
 
 // ── Initialize ──
 document.addEventListener('DOMContentLoaded', async () => {

@@ -19,9 +19,10 @@
     "ejs": "^3.1.10",
     "express": "^4.21.1",
     "express-session": "^1.18.1",
+    "leaflet": "^1.9.4",
+    "leaflet.markercluster": "^1.5.3",
     "passport": "^0.7.0",
-    "passport-azure-ad": "^4.3.5",
-    "playwright": "^1.49.1"
+    "passport-azure-ad": "^4.3.5"
   },
   "optionalDependencies": {
     "playwright": "^1.49.1"
