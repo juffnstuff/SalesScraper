@@ -261,6 +261,9 @@ function showTransactionDetail(txn) {
     if (txn.status) {
       html += `<div class="mt-1"><small><strong>Status:</strong> ${escapeHtml(txn.status)}</small></div>`;
     }
+    if (txn.lostReason) {
+      html += `<div class="mt-1"><small><strong>Lost Reason:</strong> ${escapeHtml(txn.lostReason)}</small></div>`;
+    }
     if (txn.probability != null) {
       html += `<div class="mt-1"><small><strong>Probability:</strong> ${txn.probability}%</small></div>`;
     }

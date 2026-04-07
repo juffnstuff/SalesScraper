@@ -223,11 +223,14 @@ class NetSuiteClient {
   /**
    * Classify an estimate's status display value into a map layer.
    */
-  static classifyEstimateStatus(statusDisplay) {
+  static classifyEstimateStatus(statusDisplay, lostReason) {
     if (!statusDisplay) return 'open';
     const s = statusDisplay.toLowerCase();
     if (s.includes('processed') || s.includes('closed won') || s === 'estimate:b') return 'converted';
-    if (s.includes('closed') || s.includes('voided') || s.includes('declined') || s === 'estimate:c' || s === 'estimate:x') return 'lost';
+    if (s.includes('closed') || s.includes('voided') || s.includes('declined') || s === 'estimate:c' || s === 'estimate:x') {
+      if (lostReason && lostReason.toLowerCase().includes('alternate rf solution')) return 'converted';
+      return 'lost';
+    }
     return 'open';
   }
 

@@ -104,11 +104,15 @@ function loadRunLogs(repId) {
 }
 
 // ── Estimate status classifier ──
-function classifyEstimateStatus(statusDisplay) {
+function classifyEstimateStatus(statusDisplay, lostReason) {
   if (!statusDisplay) return 'open';
   const s = statusDisplay.toLowerCase();
   if (s.includes('processed') || s.includes('closed won')) return 'converted';
-  if (s.includes('closed') || s.includes('expired') || s.includes('voided') || s.includes('declined')) return 'lost';
+  if (s.includes('closed') || s.includes('expired') || s.includes('voided') || s.includes('declined')) {
+    // "Lost: Alternate RF Solution/Quote" means customer bought a different RF product — not truly lost
+    if (lostReason && lostReason.toLowerCase().includes('alternate rf solution')) return 'converted';
+    return 'lost';
+  }
   return 'open';
 }
 
@@ -354,7 +358,8 @@ app.get('/api/salesmap-data', ensureAuth, (req, res) => {
         if (netsuiteRepId && row.employee !== netsuiteRepId) continue;
         if (cutoff && new Date(row.trandate) < cutoff) continue;
         const statusDisplay = row.statusdisplay || '';
-        const layer = classifyEstimateStatus(statusDisplay);
+        const lostReason = row.lostreason || '';
+        const layer = classifyEstimateStatus(statusDisplay, lostReason);
         transactions.push({
           id: row.id,
           tranId: row.tranid,
@@ -369,7 +374,8 @@ app.get('/api/salesmap-data', ensureAuth, (req, res) => {
           zip: row.shipzip || '',
           repName: repLookup[row.employee] || '',
           probability: row.probability || null,
-          status: statusDisplay
+          status: statusDisplay,
+          lostReason
         });
       }
     }
