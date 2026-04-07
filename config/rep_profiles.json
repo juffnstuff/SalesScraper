@@ -6,7 +6,7 @@
     "netsuiteId": 442081,
     "hubspotOwnerId": 1923694575,
     "title": "Industrial Safety Product Specialist",
-    "territory": "North-Central USA",
+    "territory": "National",
     "segment": "Industrial Safety / Reseller"
   },
   {
@@ -15,9 +15,9 @@
     "email": "andrew@rubberform.com",
     "netsuiteId": 26,
     "hubspotOwnerId": 101148281,
-    "title": "Sales Manager",
+    "title": "Senior Account Manager",
     "territory": "National",
-    "segment": "Government / Direct"
+    "segment": "Construction / Retail / Reseller"
   },
   {
     "id": "nick_zielinski",
@@ -25,9 +25,9 @@
     "email": "nickz@rubberform.com",
     "netsuiteId": 150925,
     "hubspotOwnerId": 539558502,
-    "title": "Sales Representative",
+    "title": "Public Sector Sales Manager",
     "territory": "National",
-    "segment": "Direct / Construction"
+    "segment": "Municipal / Public Sector / Traffic Safety"
   },
   {
     "id": "brad_backman",
@@ -35,9 +35,9 @@
     "email": "bradb@rubberform.com",
     "netsuiteId": 443337,
     "hubspotOwnerId": 78347095,
-    "title": "Sales Representative",
+    "title": "Parking Lot Safety Product Specialist",
     "territory": "National",
-    "segment": "Reseller / E-Commerce"
+    "segment": "Parking Safety / Reseller / E-Commerce"
   },
   {
     "id": "bill_robbins",
@@ -46,9 +46,9 @@
     "netsuiteId": -5,
     "hubspotOwnerId": 101144621,
     "hubspotAssignTo": "jake_robbins",
-    "title": "Owner / Sales",
+    "title": "President",
     "territory": "National",
-    "segment": "Direct / Key Accounts"
+    "segment": "Industrial / Utility / Key Accounts"
   },
   {
     "id": "jake_robbins",
@@ -56,8 +56,8 @@
     "email": "jake@rubberform.com",
     "netsuiteId": 16,
     "hubspotOwnerId": 101144621,
-    "title": "Sales Manager",
+    "title": "VP of Sales",
     "territory": "National",
-    "segment": "Direct / Construction"
+    "segment": "Key Accounts / Management"
   }
 ]
