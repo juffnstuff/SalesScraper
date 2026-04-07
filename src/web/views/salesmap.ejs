@@ -37,12 +37,12 @@
           <option value="<%= rep.id %>"><%= rep.name %></option>
         <% } %>
       </select>
-      <select class="form-select form-select-sm" id="timeRange" style="width: auto;">
-        <option value="180">Last 6 Months</option>
-        <option value="365" selected>Last Year</option>
-        <option value="730">Last 2 Years</option>
-        <option value="0">All Time</option>
-      </select>
+      <span class="mx-2 text-muted">|</span>
+      <span class="fw-bold small text-muted">YEARS:</span>
+      <% const currentYear = new Date().getFullYear(); %>
+      <% for (let y = currentYear; y >= currentYear - 4; y--) { %>
+        <button class="btn btn-sm btn-secondary year-toggle active" data-year="<%= y %>" style="min-width:55px;"><%= y %></button>
+      <% } %>
     </div>
   </div>
   <div class="col-md-3 text-end">
@@ -82,48 +82,45 @@
   <div class="col">
     <div class="card text-center">
       <div class="card-body py-2">
-        <div class="stat-value" id="statTotal">0</div>
-        <div class="stat-label">Total Transactions</div>
-      </div>
-    </div>
-  </div>
-  <div class="col">
-    <div class="card text-center">
-      <div class="card-body py-2">
-        <div class="stat-value layer-shipped" id="statShipped">0</div>
-        <div class="stat-label">Shipped Sales</div>
-      </div>
-    </div>
-  </div>
-  <div class="col">
-    <div class="card text-center">
-      <div class="card-body py-2">
-        <div class="stat-value layer-open" id="statOpen">0</div>
-        <div class="stat-label">Open Quotes</div>
-      </div>
-    </div>
-  </div>
-  <div class="col">
-    <div class="card text-center">
-      <div class="card-body py-2">
-        <div class="stat-value layer-converted" id="statConverted">0</div>
-        <div class="stat-label">Converted</div>
-      </div>
-    </div>
-  </div>
-  <div class="col">
-    <div class="card text-center">
-      <div class="card-body py-2">
-        <div class="stat-value layer-lost" id="statLost">0</div>
-        <div class="stat-label">Lost</div>
-      </div>
-    </div>
-  </div>
-  <div class="col">
-    <div class="card text-center">
-      <div class="card-body py-2">
         <div class="stat-value text-success" id="statRevenue">$0</div>
         <div class="stat-label">Sales Revenue</div>
+        <div class="small text-muted"><span id="statShipped">0</span> orders</div>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card text-center">
+      <div class="card-body py-2">
+        <div class="stat-value layer-open" id="statOpenValue">$0</div>
+        <div class="stat-label">Open Quotes</div>
+        <div class="small text-muted"><span id="statOpen">0</span> quotes</div>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card text-center">
+      <div class="card-body py-2">
+        <div class="stat-value layer-converted" id="statConvertedValue">$0</div>
+        <div class="stat-label">Converted</div>
+        <div class="small text-muted"><span id="statConverted">0</span> quotes</div>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card text-center">
+      <div class="card-body py-2">
+        <div class="stat-value layer-lost" id="statLostValue">$0</div>
+        <div class="stat-label">Lost</div>
+        <div class="small text-muted"><span id="statLost">0</span> quotes</div>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card text-center">
+      <div class="card-body py-2">
+        <div class="stat-value" id="statTotal">0</div>
+        <div class="stat-label">Total Transactions</div>
+        <div class="small text-muted" id="statConvRate">--% conv rate</div>
       </div>
     </div>
   </div>

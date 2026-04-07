@@ -414,7 +414,9 @@ app.get('/api/salesmap-data', ensureAuth, (req, res) => {
     converted: transactions.filter(t => t.layer === 'converted').length,
     lost: transactions.filter(t => t.layer === 'lost').length,
     totalRevenue: transactions.filter(t => t.layer === 'shipped').reduce((s, t) => s + t.total, 0),
-    totalQuoteValue: transactions.filter(t => t.layer === 'open').reduce((s, t) => s + t.total, 0)
+    totalOpenValue: transactions.filter(t => t.layer === 'open').reduce((s, t) => s + t.total, 0),
+    totalConvertedValue: transactions.filter(t => t.layer === 'converted').reduce((s, t) => s + t.total, 0),
+    totalLostValue: transactions.filter(t => t.layer === 'lost').reduce((s, t) => s + t.total, 0)
   };
 
   // Read sync timestamp

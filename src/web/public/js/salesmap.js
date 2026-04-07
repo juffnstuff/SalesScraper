@@ -36,6 +36,7 @@ let geoData = null;
 let heatLayer = null;
 let clickMarkerLayer = null;
 let activeLayers = { shipped: true, open: true, converted: true, lost: true };
+let activeYears = {}; // populated dynamically from buttons
 
 const US_STATES_GEOJSON = '/data/us-states.json';
 
@@ -55,7 +56,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.querySelectorAll('.stage-toggle').forEach(btn => {
     btn.addEventListener('click', () => toggleLayer(btn));
   });
-  document.getElementById('timeRange').addEventListener('change', () => loadData());
+
+  // Year toggle buttons
+  document.querySelectorAll('.year-toggle').forEach(btn => {
+    activeYears[btn.dataset.year] = true;
+    btn.addEventListener('click', () => toggleYear(btn));
+  });
+
   document.getElementById('repFilter').addEventListener('change', () => loadData());
 });
 
@@ -101,14 +108,14 @@ function initMap() {
 }
 
 async function loadData() {
-  const days = document.getElementById('timeRange').value;
   const repId = document.getElementById('repFilter').value;
 
   document.getElementById('loadingIndicator').style.display = 'inline';
   document.getElementById('cacheIndicator').style.display = 'none';
 
   try {
-    const resp = await fetch(`/api/salesmap-data?days=${days}&repId=${repId}`);
+    // Load all data (no date filter server-side — we filter by year client-side)
+    const resp = await fetch(`/api/salesmap-data?days=0&repId=${repId}`);
     const data = await resp.json();
     allTransactions = data.transactions || [];
 
@@ -120,11 +127,34 @@ async function loadData() {
     }
 
     updateMap();
-    updateStats(data.summary || {});
   } catch (e) {
     document.getElementById('loadingIndicator').style.display = 'none';
     console.error('Failed to load sales map data:', e);
   }
+}
+
+function getTransactionYear(txn) {
+  if (!txn.date) return null;
+  const parts = txn.date.split('/');
+  if (parts.length === 3) return parseInt(parts[2]); // M/D/YYYY
+  return new Date(txn.date).getFullYear();
+}
+
+function toggleYear(btn) {
+  const year = btn.dataset.year;
+  activeYears[year] = !activeYears[year];
+
+  if (activeYears[year]) {
+    btn.classList.add('active');
+    btn.classList.remove('btn-outline-secondary');
+    btn.classList.add('btn-secondary');
+  } else {
+    btn.classList.remove('active');
+    btn.classList.remove('btn-secondary');
+    btn.classList.add('btn-outline-secondary');
+  }
+
+  updateMap();
 }
 
 function updateMap() {
@@ -132,8 +162,19 @@ function updateMap() {
   if (heatLayer) { map.removeLayer(heatLayer); heatLayer = null; }
   clickMarkerLayer.clearLayers();
 
-  // Filter by active layers
-  const filtered = allTransactions.filter(t => activeLayers[t.layer]);
+  // Filter by active layers AND active years
+  const anyYearActive = Object.values(activeYears).some(v => v);
+  const filtered = allTransactions.filter(t => {
+    if (!activeLayers[t.layer]) return false;
+    if (anyYearActive) {
+      const year = getTransactionYear(t);
+      if (year && !activeYears[String(year)]) return false;
+    }
+    return true;
+  });
+
+  // Recompute stats from filtered data
+  updateStats(filtered);
 
   // Build heat points: [lat, lng, intensity]
   // Intensity is based on revenue (log scale to avoid outlier domination)
@@ -398,13 +439,38 @@ function toggleLayer(btn) {
   updateMap(); // Rebuild heat layer with new filter
 }
 
-function updateStats(summary) {
-  document.getElementById('statTotal').textContent = summary.total || 0;
-  document.getElementById('statShipped').textContent = summary.shipped || 0;
-  document.getElementById('statOpen').textContent = summary.open || 0;
-  document.getElementById('statConverted').textContent = summary.converted || 0;
-  document.getElementById('statLost').textContent = summary.lost || 0;
-  document.getElementById('statRevenue').textContent = '$' + (summary.totalRevenue || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+function fmtDollars(n) {
+  if (n >= 1000000) return '$' + (n / 1000000).toFixed(1) + 'M';
+  if (n >= 1000) return '$' + (n / 1000).toFixed(0) + 'K';
+  return '$' + n.toFixed(0);
+}
+
+function updateStats(filtered) {
+  const shipped = filtered.filter(t => t.layer === 'shipped');
+  const open = filtered.filter(t => t.layer === 'open');
+  const converted = filtered.filter(t => t.layer === 'converted');
+  const lost = filtered.filter(t => t.layer === 'lost');
+
+  const totalRevenue = shipped.reduce((s, t) => s + t.total, 0);
+  const openValue = open.reduce((s, t) => s + t.total, 0);
+  const convertedValue = converted.reduce((s, t) => s + t.total, 0);
+  const lostValue = lost.reduce((s, t) => s + t.total, 0);
+
+  document.getElementById('statTotal').textContent = filtered.length.toLocaleString();
+  document.getElementById('statShipped').textContent = shipped.length.toLocaleString();
+  document.getElementById('statOpen').textContent = open.length.toLocaleString();
+  document.getElementById('statConverted').textContent = converted.length.toLocaleString();
+  document.getElementById('statLost').textContent = lost.length.toLocaleString();
+
+  document.getElementById('statRevenue').textContent = fmtDollars(totalRevenue);
+  document.getElementById('statOpenValue').textContent = fmtDollars(openValue);
+  document.getElementById('statConvertedValue').textContent = fmtDollars(convertedValue);
+  document.getElementById('statLostValue').textContent = fmtDollars(lostValue);
+
+  // Conversion rate: converted / (converted + lost)
+  const totalDecided = converted.length + lost.length;
+  const convRate = totalDecided > 0 ? ((converted.length / totalDecided) * 100).toFixed(1) : '--';
+  document.getElementById('statConvRate').textContent = convRate + '% conv rate';
 }
 
 function escapeHtml(str) {
