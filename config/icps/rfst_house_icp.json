@@ -1,0 +1,112 @@
+{
+  "repId": "rfst_house",
+  "repName": "House Accounts (RFST)",
+  "generatedAt": "2026-04-07T00:00:00.000Z",
+  "companyTypes": [
+    "Equipment rental companies (United Rentals, Sunbelt, Herc, BlueLine)",
+    "National construction supply distributors",
+    "Traffic safety product resellers",
+    "Online safety product retailers",
+    "Commercial sign companies and distributors",
+    "Property management companies",
+    "Parking facility operators",
+    "General contractors with national footprint",
+    "Municipal and government purchasing cooperatives"
+  ],
+  "projectTypes": [
+    "Equipment rental fleet expansion",
+    "National account safety product supply agreements",
+    "Reseller partnership and distribution agreements",
+    "Parking lot and traffic safety upgrades",
+    "Commercial property sign and safety installations",
+    "Municipal traffic calming programs",
+    "Construction site safety product supply"
+  ],
+  "geographies": ["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","PR","ON","QC","BC","AB"],
+  "dealSizeRange": {
+    "min": 25,
+    "max": 25000,
+    "sweet_spot": 1500
+  },
+  "buyerTitles": [
+    "Procurement Manager",
+    "Category Manager",
+    "Regional Purchasing Director",
+    "Fleet Manager",
+    "Branch Manager",
+    "National Accounts Manager",
+    "VP of Procurement",
+    "Supply Chain Manager",
+    "Vendor Relations Manager"
+  ],
+  "triggerKeywords": [
+    "equipment rental",
+    "united rentals",
+    "sunbelt rentals",
+    "herc rentals",
+    "blueline rental",
+    "construction supply distributor",
+    "safety product reseller",
+    "sign base",
+    "engineered rubber curb",
+    "national account",
+    "fleet safety",
+    "parking lot safety",
+    "traffic calming",
+    "rubber speed bump",
+    "cable support tower rental",
+    "construction site safety supply"
+  ],
+  "productAffinities": [
+    "Engineered Rubber Curbs (Black, Yellow, White)",
+    "Sign Bases (Square and Round Hole)",
+    "Sign Base Weights and Covers",
+    "Metal and Plastic Sign Posts",
+    "MLSB Speed Bumps",
+    "Portable Electric Cable Support Towers",
+    "Fillable Sign Bases",
+    "Sign Base Carts"
+  ],
+  "naicsCodes": [
+    "532412",
+    "532490",
+    "423510",
+    "423610",
+    "423720",
+    "454110",
+    "561790",
+    "339999"
+  ],
+  "bidSources": [
+    "Equipment rental company vendor portals",
+    "National account RFP databases",
+    "GSA Advantage (government purchasing)",
+    "OMNIA Partners / Sourcewell cooperative purchasing",
+    "Construction supply trade shows (World of Concrete, ConExpo)",
+    "SAM.gov",
+    "Construction news monitoring",
+    "Project award tracking"
+  ],
+  "searchQueries": [
+    "united rentals safety product supplier vendor 2026",
+    "sunbelt rentals construction safety products partner",
+    "equipment rental company safety product procurement RFP",
+    "national construction supply distributor partnership opportunity",
+    "engineered rubber curb bulk procurement bid",
+    "sign base recycled rubber distributor reseller",
+    "parking lot safety products national account RFP",
+    "traffic calming products cooperative purchasing agreement",
+    "construction site safety supply national contract awarded",
+    "equipment rental fleet safety products cable support tower",
+    "herc rentals blueline rental safety vendor",
+    "Sourcewell OMNIA cooperative purchasing safety products bid",
+    "recycled rubber products distributor reseller program 2026",
+    "construction safety product supplier qualification RFQ",
+    "commercial sign base supplier national account",
+    "parking facility safety products bulk purchasing",
+    "GSA schedule recycled rubber safety products",
+    "data center construction equipment rental safety products",
+    "highway construction equipment rental trackout cable tower",
+    "municipal purchasing cooperative traffic safety products"
+  ]
+}

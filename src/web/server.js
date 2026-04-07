@@ -207,9 +207,20 @@ app.post('/api/push', ensureAuth, async (req, res) => {
   const rep = reps.find(r => r.id === repId);
   if (!rep) return res.status(404).json({ error: 'Rep not found' });
 
-  // Resolve assignment routing
-  const assignToRep = rep.hubspotAssignTo ? reps.find(r => r.id === rep.hubspotAssignTo) || rep : rep;
-  const hubspotRep = { ...rep, hubspotOwnerId: assignToRep.hubspotOwnerId };
+  // Resolve assignment routing (RFST: rentals -> Brad, rest -> Jake)
+  function resolveHubspotRep(rep, prospect) {
+    if (rep.hubspotAssignRentals) {
+      const companyName = (prospect.owner || prospect.generalContractor || prospect.projectName || '').toLowerCase();
+      const rentalKeywords = ['rental', 'rentals', 'united rentals', 'sunbelt', 'herc', 'equipment rental', 'hire'];
+      const isRental = rentalKeywords.some(kw => companyName.includes(kw));
+      if (isRental) {
+        const rentalRep = reps.find(r => r.id === rep.hubspotAssignRentals) || rep;
+        return { ...rep, hubspotOwnerId: rentalRep.hubspotOwnerId };
+      }
+    }
+    const assignToRep = rep.hubspotAssignTo ? reps.find(r => r.id === rep.hubspotAssignTo) || rep : rep;
+    return { ...rep, hubspotOwnerId: assignToRep.hubspotOwnerId };
+  }
 
   try {
     const HubSpotClient = require('../crm/hubspot_client');
@@ -226,7 +237,8 @@ app.post('/api/push', ensureAuth, async (req, res) => {
         company: prospect.owner || prospect.generalContractor || prospect.projectName,
         state: prospect.geography?.state || ''
       };
-      const result = await hubspot.pushProspect(contact, prospect, hubspotRep);
+      const effectiveRep = resolveHubspotRep(rep, prospect);
+      const result = await hubspot.pushProspect(contact, prospect, effectiveRep);
       results.push(result);
     }
 

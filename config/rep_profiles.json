@@ -59,5 +59,17 @@
     "title": "VP of Sales",
     "territory": "National",
     "segment": "Key Accounts / Management"
+  },
+  {
+    "id": "rfst_house",
+    "name": "House Accounts (RFST)",
+    "email": "sales@rubberform.com",
+    "netsuiteId": 142706,
+    "hubspotOwnerId": 101144621,
+    "hubspotAssignTo": "jake_robbins",
+    "hubspotAssignRentals": "brad_backman",
+    "title": "House Accounts",
+    "territory": "National",
+    "segment": "National Accounts / Reseller / Equipment Rental"
   }
 ]
