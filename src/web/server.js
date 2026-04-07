@@ -440,57 +440,80 @@ app.get('/heatmap', ensureAuth, (req, res) => {
   });
 });
 
-// ── API: Heat Map Data (aggregate run logs by geography + lifecycle) ──
+// ── API: Heat Map Data (reads from persistent news cache + run logs) ──
 app.get('/api/heatmap-data', ensureAuth, (req, res) => {
   const ConstructionNewsExpanded = require('../prospecting/sources/construction_news_expanded');
-  const days = parseInt(req.query.days) || 0; // 0 = all time
+  const days = parseInt(req.query.days) || 0;
   const cutoff = days > 0 ? new Date(Date.now() - days * 86400000) : null;
 
-  const logsDir = path.join(__dirname, '../../logs/runs');
-  if (!fs.existsSync(logsDir)) {
-    return res.json({ projects: [], summary: { total: 0, construction: 0, parking_industrial: 0, municipal: 0 }, byState: {} });
-  }
-
-  const files = fs.readdirSync(logsDir).filter(f => f.endsWith('.json'));
   const projects = [];
   const seen = new Set();
 
-  for (const file of files) {
-    try {
-      const data = JSON.parse(fs.readFileSync(path.join(logsDir, file), 'utf8'));
-      if (cutoff && new Date(data.runDate) < cutoff) continue;
-
-      const results = data.searchResults?.results || [];
-      for (const r of results) {
-        const state = r.geography?.state;
-        if (!state) continue;
-
-        // Deduplicate by project name + state
-        const key = ((r.projectName || '') + state).toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 60);
+  // Primary source: persistent news cache
+  try {
+    const cachePath = path.join(__dirname, '../../data/news_cache.json');
+    if (fs.existsSync(cachePath)) {
+      const cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+      for (const p of (cache.projects || [])) {
+        if (cutoff && p.scannedAt && new Date(p.scannedAt) < cutoff) continue;
+        const key = ((p.projectName || '') + (p.state || '')).toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 60);
         if (seen.has(key)) continue;
         seen.add(key);
-
-        const stage = r.lifecycleStage || ConstructionNewsExpanded.classifyLifecycleStage(r);
         projects.push({
-          projectName: r.projectName || 'Unknown',
-          projectType: r.projectType || '',
-          city: r.geography?.city || '',
-          state: state,
-          estimatedValue: r.estimatedValue || 0,
-          bidDate: r.bidDate || '',
-          owner: r.owner || '',
-          generalContractor: r.generalContractor || '',
-          sourceUrl: r.sourceUrl || '',
-          source: r.source || '',
-          relevanceScore: r.relevanceScore || 0,
-          lifecycleStage: stage,
-          notes: (r.notes || '').substring(0, 200)
+          projectName: p.projectName || 'Unknown',
+          projectType: p.projectType || '',
+          city: p.city || '',
+          state: p.state || '',
+          estimatedValue: p.estimatedValue || 0,
+          bidDate: p.bidDate || '',
+          owner: p.owner || '',
+          generalContractor: p.generalContractor || '',
+          sourceUrl: p.sourceUrl || '',
+          source: p.source || '',
+          relevanceScore: p.relevanceScore || 0,
+          lifecycleStage: p.lifecycleStage || ConstructionNewsExpanded.classifyLifecycleStage(p),
+          notes: (p.notes || '').substring(0, 200)
         });
       }
-    } catch (e) { /* skip bad files */ }
-  }
+    }
+  } catch (e) { console.error('Error reading news cache:', e.message); }
 
-  // Build summary
+  // Secondary source: run logs (for backward compatibility)
+  try {
+    const logsDir = path.join(__dirname, '../../logs/runs');
+    if (fs.existsSync(logsDir)) {
+      const files = fs.readdirSync(logsDir).filter(f => f.endsWith('.json'));
+      for (const file of files) {
+        try {
+          const data = JSON.parse(fs.readFileSync(path.join(logsDir, file), 'utf8'));
+          if (cutoff && new Date(data.runDate) < cutoff) continue;
+          for (const r of (data.searchResults?.results || [])) {
+            const state = r.geography?.state;
+            if (!state) continue;
+            const key = ((r.projectName || '') + state).toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 60);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            projects.push({
+              projectName: r.projectName || 'Unknown',
+              projectType: r.projectType || '',
+              city: r.geography?.city || '',
+              state: state,
+              estimatedValue: r.estimatedValue || 0,
+              bidDate: r.bidDate || '',
+              owner: r.owner || '',
+              generalContractor: r.generalContractor || '',
+              sourceUrl: r.sourceUrl || '',
+              source: r.source || '',
+              relevanceScore: r.relevanceScore || 0,
+              lifecycleStage: r.lifecycleStage || ConstructionNewsExpanded.classifyLifecycleStage(r),
+              notes: (r.notes || '').substring(0, 200)
+            });
+          }
+        } catch (e) { /* skip bad files */ }
+      }
+    }
+  } catch (e) { /* skip */ }
+
   const summary = {
     total: projects.length,
     construction: projects.filter(p => p.lifecycleStage === 'construction').length,
@@ -506,13 +529,57 @@ app.get('/api/heatmap-data', ensureAuth, (req, res) => {
   res.json({ projects, summary, byState });
 });
 
-// ── API: Heat Map Scan (live news search) ──
+// ── News cache helper ──
+function mergeIntoNewsCache(results) {
+  const cachePath = path.join(__dirname, '../../data/news_cache.json');
+  let cache = { projects: [], lastScan: null, totalProjects: 0 };
+  try {
+    if (fs.existsSync(cachePath)) cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+  } catch (e) { /* fresh cache */ }
+
+  const ConstructionNewsExpanded = require('../prospecting/sources/construction_news_expanded');
+  const seen = new Set();
+  for (const p of cache.projects) {
+    seen.add(((p.projectName || '') + (p.state || '')).toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 60));
+  }
+
+  let newCount = 0;
+  for (const r of results) {
+    const state = r.geography?.state || r.state || '';
+    const key = ((r.projectName || '') + state).toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 60);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    newCount++;
+    cache.projects.push({
+      projectName: r.projectName || 'Unknown',
+      projectType: r.projectType || '',
+      city: r.geography?.city || r.city || '',
+      state,
+      estimatedValue: r.estimatedValue || 0,
+      bidDate: r.bidDate || '',
+      owner: r.owner || '',
+      generalContractor: r.generalContractor || '',
+      sourceUrl: r.sourceUrl || '',
+      source: r.source || 'construction_news_expanded',
+      relevanceScore: r.relevanceScore || 0,
+      lifecycleStage: r.lifecycleStage || ConstructionNewsExpanded.classifyLifecycleStage(r),
+      notes: (r.notes || '').substring(0, 300),
+      scannedAt: new Date().toISOString()
+    });
+  }
+
+  cache.lastScan = new Date().toISOString();
+  cache.totalProjects = cache.projects.length;
+  fs.writeFileSync(cachePath, JSON.stringify(cache));
+  return { total: cache.projects.length, newCount };
+}
+
+// ── API: Heat Map Scan (live news search → saves to persistent cache) ──
 app.post('/api/heatmap-scan', ensureAuth, async (req, res) => {
   try {
     const ConstructionNewsExpanded = require('../prospecting/sources/construction_news_expanded');
     const searcher = new ConstructionNewsExpanded();
 
-    // Generic national ICP for broad scanning
     const scanIcp = {
       geographies: ['AL','AK','AZ','AR','CA','CO','CT','DE','DC','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'],
       productAffinities: [
@@ -527,8 +594,9 @@ app.post('/api/heatmap-scan', ensureAuth, async (req, res) => {
     };
 
     const results = await searcher.search(scanIcp);
+    const { total, newCount } = mergeIntoNewsCache(results);
 
-    // Save scan results to a log file
+    // Also save to run log for backward compatibility
     const Reporter = require('../ui/reporter');
     Reporter.saveRunLog('heatmap_scan', {
       repName: 'Heat Map Scan',
@@ -537,7 +605,6 @@ app.post('/api/heatmap-scan', ensureAuth, async (req, res) => {
       pushResults: []
     });
 
-    // Classify and return
     const projects = results.map(r => ({
       projectName: r.projectName || 'Unknown',
       projectType: r.projectType || '',
@@ -554,11 +621,55 @@ app.post('/api/heatmap-scan', ensureAuth, async (req, res) => {
       notes: (r.notes || '').substring(0, 200)
     }));
 
-    res.json({ success: true, projects, count: projects.length });
+    res.json({ success: true, projects, count: projects.length, totalCached: total, newProjects: newCount });
   } catch (error) {
+    console.error('Heatmap scan error:', error.message);
     res.json({ success: false, error: error.message, projects: [] });
   }
 });
+
+// ── Background scan on startup (seeds news cache if empty or stale) ──
+async function runStartupScan() {
+  const cachePath = path.join(__dirname, '../../data/news_cache.json');
+  let shouldScan = false;
+
+  try {
+    if (!fs.existsSync(cachePath)) {
+      shouldScan = true;
+    } else {
+      const cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+      const lastScan = cache.lastScan ? new Date(cache.lastScan) : null;
+      const hoursSince = lastScan ? (Date.now() - lastScan.getTime()) / 3600000 : Infinity;
+      shouldScan = hoursSince > 24 || (cache.projects || []).length === 0;
+    }
+  } catch (e) { shouldScan = true; }
+
+  if (!shouldScan) {
+    console.log('  News cache is fresh (scanned < 24h ago). Skipping startup scan.');
+    return;
+  }
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    console.log('  No ANTHROPIC_API_KEY — skipping startup news scan.');
+    return;
+  }
+
+  console.log('  Starting background news scan...');
+  try {
+    const ConstructionNewsExpanded = require('../prospecting/sources/construction_news_expanded');
+    const searcher = new ConstructionNewsExpanded();
+    const scanIcp = {
+      geographies: ['CA','TX','FL','NY','IL','PA','OH','GA','NC','MI','NJ','VA','WA','AZ','MA','TN','IN','MO','MD','WI','CO','MN','SC','AL','LA','KY','OR','OK','CT','UT'],
+      productAffinities: ['Cable Support Towers', 'Trackout Mats', 'Speed Cushions', 'Wheel Stops', 'Sign Bases', 'Rubber Curbs', 'Flexible Bollards', 'Speed Bumps'],
+      triggerKeywords: ['construction', 'traffic calming', 'parking lot', 'data center', 'highway', 'warehouse']
+    };
+    const results = await searcher.search(scanIcp);
+    const { total, newCount } = mergeIntoNewsCache(results);
+    console.log(`  Background scan complete: ${results.length} found, ${newCount} new, ${total} total cached.`);
+  } catch (e) {
+    console.error('  Background scan failed:', e.message);
+  }
+}
 
 // ── ICP detail ──
 app.get('/icp/:repId', ensureAuth, (req, res) => {
@@ -578,4 +689,7 @@ app.listen(PORT, () => {
   console.log(`\n  🔧 RubberForm Prospecting Engine`);
   console.log(`  📊 Dashboard: http://localhost:${PORT}`);
   console.log(`  🔐 Auth: ${MS365_ENABLED ? 'MS365 (Azure AD)' : 'Disabled (local mode)'}\n`);
+
+  // Run background news scan if cache is stale
+  runStartupScan().catch(e => console.error('Startup scan error:', e.message));
 });
