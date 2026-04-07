@@ -323,59 +323,85 @@ app.get('/api/salesmap-data', ensureAuth, (req, res) => {
   const cacheDir = path.join(__dirname, '../../data/netsuite_cache');
   const transactions = [];
 
-  // Read sales cache
+  // Read sales cache (supports both SuiteQL and enriched saved-search format)
   try {
     const salesPath = path.join(cacheDir, 'sales.json');
     if (fs.existsSync(salesPath)) {
       const salesData = JSON.parse(fs.readFileSync(salesPath, 'utf8'));
       for (const row of (salesData.transactions || [])) {
-        if (netsuiteRepId && row.employee !== netsuiteRepId) continue;
-        if (cutoff && new Date(row.trandate) < cutoff) continue;
+        const repId_ = row.salesRep || row.employee;
+        if (netsuiteRepId && repId_ !== netsuiteRepId) continue;
+        const dateStr = row.date || row.trandate;
+        if (cutoff && new Date(dateStr) < cutoff) continue;
         transactions.push({
           id: row.id,
-          tranId: row.tranid,
+          tranId: row.orderId || row.tranid,
           type: 'SalesOrd',
           layer: 'shipped',
-          date: row.trandate,
+          date: dateStr,
           total: parseFloat(row.total) || 0,
-          customerName: row.customername,
+          customerName: row.customer || row.customername,
           memo: row.memo || '',
-          city: row.shipcity || '',
-          state: row.shipstate || '',
-          zip: row.shipzip || '',
-          repName: repLookup[row.employee] || ''
+          city: row.city || row.shipcity || '',
+          state: row.state || row.shipstate || '',
+          zip: row.zip || row.shipzip || '',
+          street: row.street || '',
+          repName: repLookup[repId_] || '',
+          vertical: row.vertical || '',
+          hqCity: row.hqCity || '',
+          hqState: row.hqState || '',
+          firstOrder: row.firstOrder || false,
+          leadSource: row.leadSource || '',
+          items: row.items || []
         });
       }
     }
   } catch (e) { console.error('Error reading sales cache:', e.message); }
 
-  // Read estimates cache
+  // Read estimates cache (supports both SuiteQL and enriched saved-search format)
   try {
     const estPath = path.join(cacheDir, 'estimates.json');
     if (fs.existsSync(estPath)) {
       const estData = JSON.parse(fs.readFileSync(estPath, 'utf8'));
       for (const row of (estData.transactions || [])) {
-        if (netsuiteRepId && row.employee !== netsuiteRepId) continue;
-        if (cutoff && new Date(row.trandate) < cutoff) continue;
-        const statusDisplay = row.statusdisplay || '';
-        const lostReason = row.lostreason || '';
+        const repId_ = row.salesRep || row.employee;
+        if (netsuiteRepId && repId_ !== netsuiteRepId) continue;
+        const dateStr = row.date || row.trandate;
+        if (cutoff && new Date(dateStr) < cutoff) continue;
+        const nsStatus = row.nsStatus || '';
+        const lostReason = row.lostReason || row.lostreason || '';
+        const statusDisplay = row.status || row.statusdisplay || nsStatus || '';
         const layer = classifyEstimateStatus(statusDisplay, lostReason);
         transactions.push({
           id: row.id,
-          tranId: row.tranid,
+          tranId: row.quoteId || row.tranid,
           type: 'Estimate',
           layer,
-          date: row.trandate,
+          date: dateStr,
           total: parseFloat(row.total) || 0,
-          customerName: row.customername,
+          customerName: row.customer || row.customername,
           memo: row.memo || '',
-          city: row.shipcity || '',
-          state: row.shipstate || '',
-          zip: row.shipzip || '',
-          repName: repLookup[row.employee] || '',
+          city: row.city || row.shipcity || '',
+          state: row.state || row.shipstate || '',
+          zip: row.zip || row.shipzip || '',
+          street: row.street || '',
+          repName: repLookup[repId_] || '',
           probability: row.probability || null,
           status: statusDisplay,
-          lostReason
+          nsStatus,
+          lostReason,
+          reasonForLoss: row.reasonForLoss || '',
+          daysOpen: row.daysOpen != null ? row.daysOpen : null,
+          linkedSO: row.linkedSO || '',
+          dateConverted: row.dateConverted || '',
+          contactEmail: row.contactEmail || '',
+          isBid: row.isBid || false,
+          firstQuote: row.firstQuote || false,
+          vertical: row.vertical || '',
+          hqCity: row.hqCity || '',
+          hqState: row.hqState || '',
+          leadSource: row.leadSource || '',
+          items: row.items || []
         });
       }
     }

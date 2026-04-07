@@ -1,9 +1,10 @@
 /**
- * RubberForm Prospecting Engine — Sales Map
- * Interactive US map showing NetSuite sales orders and quotes by shipping address.
+ * RubberForm Prospecting Engine — Sales Heat Map
+ * True density gradient heat map with drill-down detail panel.
+ * Uses Leaflet.heat for gradient visualization + invisible markers for click interaction.
  */
 
-// Layer colors
+// Layer config
 const LAYER_COLORS = {
   shipped: '#16a34a',
   open: '#ea580c',
@@ -18,14 +19,24 @@ const LAYER_LABELS = {
   lost: 'Lost Quote'
 };
 
+// Heat map gradient (cool blue → warm yellow → hot red)
+const HEAT_GRADIENT = {
+  0.2: '#3b82f6',
+  0.4: '#06b6d4',
+  0.5: '#22c55e',
+  0.6: '#eab308',
+  0.8: '#f97316',
+  1.0: '#ef4444'
+};
+
 // Global state
 let map;
 let allTransactions = [];
 let geoData = null;
-let markerLayers = {};
+let heatLayer = null;
+let clickMarkerLayer = null;
 let activeLayers = { shipped: true, open: true, converted: true, lost: true };
 
-// US state boundary GeoJSON
 const US_STATES_GEOJSON = '/data/us-states.json';
 
 // -- Initialize --
@@ -41,12 +52,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   initMap();
   loadData();
 
-  // Layer toggle buttons
   document.querySelectorAll('.stage-toggle').forEach(btn => {
     btn.addEventListener('click', () => toggleLayer(btn));
   });
-
-  // Filter change handlers
   document.getElementById('timeRange').addEventListener('change', () => loadData());
   document.getElementById('repFilter').addEventListener('change', () => loadData());
 });
@@ -56,65 +64,46 @@ function initMap() {
     center: [39.8, -98.5],
     zoom: 4,
     minZoom: 3,
-    maxZoom: 12
+    maxZoom: 18
   });
 
-  // Try CARTO tiles first, fall back to no-tile map if CDN unreachable
+  // Tile layer (graceful fallback)
   const tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+    attribution: '&copy; CARTO &copy; OSM',
     subdomains: 'abcd',
     maxZoom: 19
   });
-  tileLayer.on('tileerror', () => {}); // Suppress tile load errors silently
+  tileLayer.on('tileerror', () => {});
   tileLayer.addTo(map);
 
-  // US state boundaries (local GeoJSON — serves as base map when tiles unavailable)
+  // State boundaries as base map
   fetch(US_STATES_GEOJSON)
     .then(r => r.json())
     .then(geojson => {
       L.geoJSON(geojson, {
         style: {
           fillColor: '#e2e8f0',
-          fillOpacity: 0.6,
+          fillOpacity: 0.5,
           color: '#94a3b8',
           weight: 1.5
         },
         onEachFeature: (feature, layer) => {
-          layer.bindTooltip(feature.properties.name, { sticky: true, className: 'state-tooltip' });
-          layer.on('mouseover', function() {
-            this.setStyle({ fillOpacity: 0.8, weight: 2.5, color: '#64748b' });
-          });
-          layer.on('mouseout', function() {
-            this.setStyle({ fillOpacity: 0.6, weight: 1.5, color: '#94a3b8' });
-          });
+          layer.bindTooltip(feature.properties.name, { sticky: true });
+          layer.on('mouseover', function() { this.setStyle({ fillOpacity: 0.7, weight: 2, color: '#64748b' }); });
+          layer.on('mouseout', function() { this.setStyle({ fillOpacity: 0.5, weight: 1.5, color: '#94a3b8' }); });
         }
       }).addTo(map);
     })
     .catch(e => console.warn('Could not load state boundaries:', e));
 
-  // Initialize marker cluster groups for each layer
-  for (const layer of Object.keys(LAYER_COLORS)) {
-    markerLayers[layer] = L.markerClusterGroup({
-      maxClusterRadius: 40,
-      iconCreateFunction: function(cluster) {
-        const count = cluster.getChildCount();
-        const color = LAYER_COLORS[layer];
-        return L.divIcon({
-          html: `<div style="background:${color}; color:white; border-radius:50%; width:36px; height:36px; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:13px; border:2px solid white; box-shadow:0 2px 6px rgba(0,0,0,0.3);">${count}</div>`,
-          className: '',
-          iconSize: [36, 36]
-        });
-      }
-    });
-    map.addLayer(markerLayers[layer]);
-  }
+  // Click marker layer (invisible markers for drill-down)
+  clickMarkerLayer = L.layerGroup().addTo(map);
 }
 
 async function loadData() {
   const days = document.getElementById('timeRange').value;
   const repId = document.getElementById('repFilter').value;
 
-  // Show loading indicator
   document.getElementById('loadingIndicator').style.display = 'inline';
   document.getElementById('cacheIndicator').style.display = 'none';
 
@@ -127,7 +116,7 @@ async function loadData() {
 
     if (data.error) {
       document.getElementById('cacheIndicator').style.display = 'inline';
-      document.getElementById('cacheAge').textContent = 'NetSuite error: ' + data.error;
+      document.getElementById('cacheAge').textContent = 'Error: ' + data.error;
     }
 
     updateMap();
@@ -139,67 +128,69 @@ async function loadData() {
 }
 
 function updateMap() {
-  // Clear all layers
-  for (const layer of Object.keys(markerLayers)) {
-    markerLayers[layer].clearLayers();
-  }
+  // Remove old heat layer
+  if (heatLayer) { map.removeLayer(heatLayer); heatLayer = null; }
+  clickMarkerLayer.clearLayers();
 
-  for (const txn of allTransactions) {
+  // Filter by active layers
+  const filtered = allTransactions.filter(t => activeLayers[t.layer]);
+
+  // Build heat points: [lat, lng, intensity]
+  // Intensity is based on revenue (log scale to avoid outlier domination)
+  const heatPoints = [];
+  const maxTotal = Math.max(...filtered.map(t => t.total || 1), 1);
+
+  for (const txn of filtered) {
     const coords = getCoords(txn.city, txn.state);
     if (!coords) continue;
 
-    const layer = txn.layer || 'shipped';
-    const color = LAYER_COLORS[layer] || LAYER_COLORS.shipped;
-
-    // Slight jitter to prevent exact overlaps
-    const jitter = () => (Math.random() - 0.5) * 0.02;
+    const jitter = () => (Math.random() - 0.5) * 0.03;
     const lat = coords[0] + jitter();
     const lng = coords[1] + jitter();
 
+    // Log-scaled intensity: higher revenue = more heat
+    const intensity = 0.3 + 0.7 * (Math.log(1 + (txn.total || 0)) / Math.log(1 + maxTotal));
+    heatPoints.push([lat, lng, intensity]);
+
+    // Invisible click marker for drill-down
     const marker = L.circleMarker([lat, lng], {
-      radius: 7,
-      fillColor: color,
-      color: '#fff',
-      weight: 2,
-      opacity: 1,
-      fillOpacity: 0.85
+      radius: 8,
+      fillColor: 'transparent',
+      color: 'transparent',
+      fillOpacity: 0,
+      weight: 0
     });
-
     marker.on('click', () => showTransactionDetail(txn));
-
-    const label = escapeHtml(txn.customerName || txn.tranId).substring(0, 50);
-    marker.bindTooltip(label, { direction: 'top', offset: [0, -8] });
-
-    if (markerLayers[layer]) {
-      markerLayers[layer].addLayer(marker);
-    }
+    const label = escapeHtml(txn.customerName || txn.tranId || '').substring(0, 50);
+    if (label) marker.bindTooltip(label, { direction: 'top', offset: [0, -8] });
+    clickMarkerLayer.addLayer(marker);
   }
 
-  // Apply active layer filters
-  for (const layer of Object.keys(activeLayers)) {
-    if (activeLayers[layer]) {
-      if (!map.hasLayer(markerLayers[layer])) map.addLayer(markerLayers[layer]);
-    } else {
-      if (map.hasLayer(markerLayers[layer])) map.removeLayer(markerLayers[layer]);
-    }
+  // Create heat layer
+  if (heatPoints.length > 0) {
+    heatLayer = L.heatLayer(heatPoints, {
+      radius: 25,
+      blur: 20,
+      maxZoom: 10,
+      max: 1.0,
+      minOpacity: 0.35,
+      gradient: HEAT_GRADIENT
+    }).addTo(map);
   }
 }
 
 function getCoords(city, state) {
   if (!geoData) return null;
 
-  // Try exact city,state match
   if (city && state) {
     const key = `${city},${state}`;
     if (geoData.cities[key]) return geoData.cities[key];
 
-    // Case-insensitive match
     const keyLower = key.toLowerCase();
     for (const [k, v] of Object.entries(geoData.cities)) {
       if (k.toLowerCase() === keyLower) return v;
     }
 
-    // Partial city match
     const cityLower = city.toLowerCase();
     for (const [k, v] of Object.entries(geoData.cities)) {
       const parts = k.split(',');
@@ -207,7 +198,6 @@ function getCoords(city, state) {
     }
   }
 
-  // Fallback to state centroid
   if (state && geoData.stateCentroids[state]) {
     return geoData.stateCentroids[state];
   }
@@ -228,54 +218,165 @@ function showTransactionDetail(txn) {
 
   // Customer name
   if (txn.customerName) {
-    html += `<h6 class="mb-1">${escapeHtml(txn.customerName)}</h6>`;
+    html += `<h5 class="mb-1">${escapeHtml(txn.customerName)}</h5>`;
   }
 
-  // Layer badge
-  html += `<span class="badge" style="background:${color}; color:white; font-size:0.7rem;">${layerLabel}</span>`;
-
-  // Transaction number
+  // Layer badge + transaction number
+  html += `<span class="badge" style="background:${color}; color:white;">${layerLabel}</span>`;
   if (txn.tranId) {
-    html += `<div class="mt-2"><small class="text-muted"><i class="bi bi-hash"></i> ${escapeHtml(txn.tranId)}</small></div>`;
+    html += ` <span class="badge bg-secondary">${escapeHtml(txn.tranId)}</span>`;
   }
 
-  // Date
-  if (txn.date) {
-    html += `<div class="mt-1"><small class="text-muted"><i class="bi bi-calendar"></i> ${escapeHtml(txn.date)}</small></div>`;
-  }
+  // Key details grid
+  html += '<div class="mt-3">';
 
-  // Amount
   if (txn.total > 0) {
-    html += `<div class="mt-1"><small class="text-success fw-bold"><i class="bi bi-currency-dollar"></i> $${Number(txn.total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</small></div>`;
+    html += `<div class="d-flex justify-content-between border-bottom py-1">
+      <small class="text-muted">Amount</small>
+      <small class="fw-bold text-success">$${Number(txn.total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</small>
+    </div>`;
   }
 
-  // Location
-  const location = [txn.city, txn.state, txn.zip].filter(Boolean).join(', ');
-  if (location) {
-    html += `<div class="mt-1"><small class="text-muted"><i class="bi bi-geo-alt"></i> ${escapeHtml(location)}</small></div>`;
+  if (txn.date) {
+    html += `<div class="d-flex justify-content-between border-bottom py-1">
+      <small class="text-muted">Date</small>
+      <small>${escapeHtml(txn.date)}</small>
+    </div>`;
   }
 
-  // Sales rep
   if (txn.repName) {
-    html += `<div class="mt-2"><small><strong>Sales Rep:</strong> ${escapeHtml(txn.repName)}</small></div>`;
+    html += `<div class="d-flex justify-content-between border-bottom py-1">
+      <small class="text-muted">Sales Rep</small>
+      <small>${escapeHtml(txn.repName)}</small>
+    </div>`;
   }
 
-  // Quote-specific fields
+  // Ship-to address
+  const addrParts = [txn.street, txn.city, txn.state, txn.zip].filter(Boolean);
+  if (addrParts.length) {
+    html += `<div class="d-flex justify-content-between border-bottom py-1">
+      <small class="text-muted">Ship To</small>
+      <small class="text-end">${escapeHtml(addrParts.join(', '))}</small>
+    </div>`;
+  }
+
+  // HQ location
+  if (txn.hqCity || txn.hqState) {
+    html += `<div class="d-flex justify-content-between border-bottom py-1">
+      <small class="text-muted">HQ</small>
+      <small>${escapeHtml([txn.hqCity, txn.hqState].filter(Boolean).join(', '))}</small>
+    </div>`;
+  }
+
+  if (txn.vertical) {
+    html += `<div class="d-flex justify-content-between border-bottom py-1">
+      <small class="text-muted">Vertical</small>
+      <small>${escapeHtml(txn.vertical)}</small>
+    </div>`;
+  }
+
+  if (txn.leadSource) {
+    html += `<div class="d-flex justify-content-between border-bottom py-1">
+      <small class="text-muted">Lead Source</small>
+      <small>${escapeHtml(txn.leadSource)}</small>
+    </div>`;
+  }
+
+  html += '</div>';
+
+  // Quote-specific pipeline section
   if (txn.type === 'Estimate') {
-    if (txn.status) {
-      html += `<div class="mt-1"><small><strong>Status:</strong> ${escapeHtml(txn.status)}</small></div>`;
-    }
-    if (txn.lostReason) {
-      html += `<div class="mt-1"><small><strong>Lost Reason:</strong> ${escapeHtml(txn.lostReason)}</small></div>`;
+    html += '<div class="mt-3"><h6 class="text-muted small fw-bold">QUOTE PIPELINE</h6>';
+
+    if (txn.nsStatus) {
+      html += `<div class="d-flex justify-content-between border-bottom py-1">
+        <small class="text-muted">NS Status</small>
+        <small class="fw-bold">${escapeHtml(txn.nsStatus)}</small>
+      </div>`;
     }
     if (txn.probability != null) {
-      html += `<div class="mt-1"><small><strong>Probability:</strong> ${txn.probability}%</small></div>`;
+      html += `<div class="d-flex justify-content-between border-bottom py-1">
+        <small class="text-muted">Probability</small>
+        <small>${escapeHtml(String(txn.probability))}</small>
+      </div>`;
     }
+    if (txn.daysOpen != null) {
+      html += `<div class="d-flex justify-content-between border-bottom py-1">
+        <small class="text-muted">Days Open</small>
+        <small>${txn.daysOpen}</small>
+      </div>`;
+    }
+    if (txn.linkedSO) {
+      html += `<div class="d-flex justify-content-between border-bottom py-1">
+        <small class="text-muted">Linked SO</small>
+        <small class="text-primary">${escapeHtml(txn.linkedSO)}</small>
+      </div>`;
+    }
+    if (txn.dateConverted) {
+      html += `<div class="d-flex justify-content-between border-bottom py-1">
+        <small class="text-muted">Date Converted</small>
+        <small>${escapeHtml(txn.dateConverted)}</small>
+      </div>`;
+    }
+    if (txn.contactEmail) {
+      html += `<div class="d-flex justify-content-between border-bottom py-1">
+        <small class="text-muted">Contact</small>
+        <small><a href="mailto:${escapeHtml(txn.contactEmail)}">${escapeHtml(txn.contactEmail)}</a></small>
+      </div>`;
+    }
+    if (txn.lostReason) {
+      html += `<div class="d-flex justify-content-between border-bottom py-1">
+        <small class="text-muted">Lost Reason</small>
+        <small class="text-danger">${escapeHtml(txn.lostReason)}</small>
+      </div>`;
+    }
+    if (txn.reasonForLoss) {
+      html += `<div class="d-flex justify-content-between border-bottom py-1">
+        <small class="text-muted">Details</small>
+        <small class="text-end">${escapeHtml(txn.reasonForLoss)}</small>
+      </div>`;
+    }
+    if (txn.isBid) {
+      html += `<div class="d-flex justify-content-between border-bottom py-1">
+        <small class="text-muted">Is Bid</small>
+        <small>Yes</small>
+      </div>`;
+    }
+    if (txn.firstQuote) {
+      html += `<div class="d-flex justify-content-between border-bottom py-1">
+        <small class="text-muted">First Quote</small>
+        <small class="text-info">Yes</small>
+      </div>`;
+    }
+    html += '</div>';
+  }
+
+  // Sales-specific
+  if (txn.type === 'SalesOrd' && txn.firstOrder) {
+    html += `<div class="mt-2"><span class="badge bg-info">First Order</span></div>`;
+  }
+
+  // Line items
+  if (txn.items && txn.items.length > 0) {
+    html += '<div class="mt-3"><h6 class="text-muted small fw-bold">LINE ITEMS</h6>';
+    html += '<table class="table table-sm table-borderless mb-0" style="font-size:0.78rem;">';
+    html += '<thead><tr><th>Item</th><th class="text-end">Qty</th><th class="text-end">Amt</th></tr></thead><tbody>';
+    for (const item of txn.items) {
+      html += `<tr>
+        <td title="${escapeHtml(item.description || '')}">${escapeHtml(item.itemNumber || '?')}</td>
+        <td class="text-end">${item.qty || ''}</td>
+        <td class="text-end">$${Number(item.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+      </tr>`;
+      if (item.description) {
+        html += `<tr><td colspan="3" class="text-muted pt-0" style="font-size:0.7rem;">${escapeHtml(item.description).substring(0, 100)}</td></tr>`;
+      }
+    }
+    html += '</tbody></table></div>';
   }
 
   // Memo
   if (txn.memo) {
-    html += `<div class="mt-2 p-2" style="background:#f8fafc; border-radius:8px;"><small class="text-muted">${escapeHtml(txn.memo)}</small></div>`;
+    html += `<div class="mt-3 p-2" style="background:#f8fafc; border-radius:8px;"><small class="text-muted"><strong>Memo:</strong> ${escapeHtml(txn.memo)}</small></div>`;
   }
 
   html += '</div>';
@@ -289,12 +390,12 @@ function toggleLayer(btn) {
   if (activeLayers[layer]) {
     btn.classList.add('active');
     btn.style.opacity = '1';
-    if (!map.hasLayer(markerLayers[layer])) map.addLayer(markerLayers[layer]);
   } else {
     btn.classList.remove('active');
     btn.style.opacity = '0.4';
-    if (map.hasLayer(markerLayers[layer])) map.removeLayer(markerLayers[layer]);
   }
+
+  updateMap(); // Rebuild heat layer with new filter
 }
 
 function updateStats(summary) {

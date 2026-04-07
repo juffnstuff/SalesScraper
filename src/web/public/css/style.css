@@ -55,7 +55,8 @@ body { background-color: #f5f6fa; }
 #heatmap { height: 520px; border-radius: 12px; z-index: 1; background: #f8fafc; }
 
 /* Sales Map */
-#salesmap { height: 520px; border-radius: 12px; z-index: 1; background: #f8fafc; }
+#salesmap { height: 600px; border-radius: 12px; z-index: 1; background: #f8fafc; }
+.salesmap-sidebar { max-height: 600px; overflow-y: auto; }
 .layer-shipped { color: #16a34a; }
 .layer-open { color: #ea580c; }
 .layer-converted { color: #2563eb; }
