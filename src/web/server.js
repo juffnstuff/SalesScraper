@@ -107,7 +107,7 @@ function loadRunLogs(repId) {
 function classifyEstimateStatus(statusDisplay, lostReason) {
   if (!statusDisplay) return 'open';
   const s = statusDisplay.toLowerCase();
-  if (s.includes('processed') || s.includes('closed won')) return 'converted';
+  if (s.includes('processed') || s.includes('converted') || s.includes('closed won')) return 'converted';
   if (s.includes('closed') || s.includes('expired') || s.includes('voided') || s.includes('declined')) {
     // "Lost: Alternate RF Solution/Quote" means customer bought a different RF product — not truly lost
     if (lostReason && lostReason.toLowerCase().includes('alternate rf solution')) return 'converted';
@@ -340,7 +340,7 @@ app.get('/api/salesmap-data', ensureAuth, (req, res) => {
           layer: 'shipped',
           date: dateStr,
           total: parseFloat(row.total) || 0,
-          customerName: row.customer || row.customername,
+          customerName: row.customerName || row.customer || row.customername,
           memo: row.memo || '',
           city: row.city || row.shipcity || '',
           state: row.state || row.shipstate || '',
@@ -379,7 +379,7 @@ app.get('/api/salesmap-data', ensureAuth, (req, res) => {
           layer,
           date: dateStr,
           total: parseFloat(row.total) || 0,
-          customerName: row.customer || row.customername,
+          customerName: row.customerName || row.customer || row.customername,
           memo: row.memo || '',
           city: row.city || row.shipcity || '',
           state: row.state || row.shipstate || '',
