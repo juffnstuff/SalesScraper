@@ -23,8 +23,14 @@
       </div>
       <div class="navbar-nav">
         <% if (typeof user !== 'undefined' && user) { %>
-          <span class="nav-link text-light"><i class="bi bi-person-circle"></i> <%= user.name %></span>
-          <% if (MS365_ENABLED) { %><a class="nav-link" href="/logout">Logout</a><% } %>
+          <span class="nav-link text-light">
+            <i class="bi bi-person-circle"></i> <%= user.name %>
+            <% if (user.role) { %>
+              <span class="badge bg-<%= user.role === 'admin' ? 'warning text-dark' : 'info' %> ms-1" style="font-size:0.65rem;"><%= user.role === 'admin' ? 'Admin' : 'Rep' %></span>
+            <% } %>
+          </span>
+          <a class="nav-link" href="/change-password"><i class="bi bi-key"></i></a>
+          <a class="nav-link" href="/logout"><i class="bi bi-box-arrow-right"></i> Logout</a>
         <% } %>
       </div>
     </div>

@@ -13,6 +13,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@hubspot/api-client": "^12.0.1",
+    "bcryptjs": "^3.0.3",
     "bootstrap": "^5.3.8",
     "bootstrap-icons": "^1.13.1",
     "chalk": "^4.1.2",
@@ -25,7 +26,8 @@
     "leaflet.heat": "^0.2.0",
     "leaflet.markercluster": "^1.5.3",
     "passport": "^0.7.0",
-    "passport-azure-ad": "^4.3.5"
+    "passport-azure-ad": "^4.3.5",
+    "passport-local": "^1.0.0"
   },
   "optionalDependencies": {
     "playwright": "^1.49.1"

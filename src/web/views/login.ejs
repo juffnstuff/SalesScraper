@@ -15,10 +15,33 @@
         <h2 class="mb-1"><i class="bi bi-bullseye text-success"></i></h2>
         <h4 class="mb-3">RubberForm Prospecting Engine</h4>
         <p class="text-muted mb-4">AI-powered sales prospecting for the RubberForm team.</p>
-        <a href="/auth/signin" class="btn btn-primary btn-lg w-100">
-          <i class="bi bi-microsoft"></i> Sign in with Microsoft 365
-        </a>
-        <p class="text-muted mt-3 small">Restricted to @rubberform.com accounts</p>
+
+        <% if (error) { %>
+          <div class="alert alert-danger py-2 small"><i class="bi bi-exclamation-triangle"></i> <%= error %></div>
+        <% } %>
+
+        <form method="POST" action="/login">
+          <div class="mb-3 text-start">
+            <label class="form-label small text-muted" for="username">Username</label>
+            <input type="text" class="form-control" id="username" name="username" placeholder="e.g. galen, jeff" required autofocus>
+          </div>
+          <div class="mb-3 text-start">
+            <label class="form-label small text-muted" for="password">Password</label>
+            <input type="password" class="form-control" id="password" name="password" required>
+          </div>
+          <button type="submit" class="btn btn-success btn-lg w-100">
+            <i class="bi bi-box-arrow-in-right"></i> Sign In
+          </button>
+        </form>
+
+        <% if (MS365_ENABLED) { %>
+          <hr class="my-4">
+          <a href="/auth/signin" class="btn btn-outline-primary w-100">
+            <i class="bi bi-microsoft"></i> Sign in with Microsoft 365
+          </a>
+        <% } %>
+
+        <p class="text-muted mt-3 small">Restricted to RubberForm employees</p>
       </div>
     </div>
   </div>

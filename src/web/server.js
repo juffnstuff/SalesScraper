@@ -8,6 +8,8 @@ require('dotenv').config();
 const express = require('express');
 const session = require('express-session');
 const passport = require('passport');
+const LocalStrategy = require('passport-local').Strategy;
+const bcrypt = require('bcryptjs');
 const { OIDCStrategy } = require('passport-azure-ad');
 const path = require('path');
 const fs = require('fs');
@@ -33,13 +35,59 @@ app.use(session({
   cookie: { secure: process.env.NODE_ENV === 'production', maxAge: 8 * 60 * 60 * 1000 }
 }));
 
-// ── MS365 / Azure AD Authentication ──
-const MS365_ENABLED = process.env.MS365_CLIENT_ID && process.env.MS365_TENANT_ID;
+// ── Authentication ──
+const MS365_ENABLED = !!(process.env.MS365_CLIENT_ID && process.env.MS365_TENANT_ID);
+const USERS_PATH = path.join(__dirname, '../../config/users.json');
 
+function loadUsers() {
+  try { return JSON.parse(fs.readFileSync(USERS_PATH, 'utf8')); }
+  catch { return []; }
+}
+
+function saveUsers(users) {
+  fs.writeFileSync(USERS_PATH, JSON.stringify(users, null, 2));
+}
+
+// Passport serialization (shared by both strategies)
+passport.serializeUser((user, done) => done(null, user.username || user.id));
+passport.deserializeUser((identifier, done) => {
+  const users = loadUsers();
+  const user = users.find(u => u.username === identifier);
+  if (user) {
+    return done(null, {
+      username: user.username,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      repId: user.repId,
+      mustChangePassword: user.mustChangePassword
+    });
+  }
+  // Fallback for MS365 sessions (identifier is Azure OID)
+  done(null, { id: identifier, name: 'MS365 User', role: 'admin' });
+});
+
+// ── Local username/password strategy ──
+passport.use(new LocalStrategy(async (username, password, done) => {
+  const users = loadUsers();
+  const user = users.find(u => u.username === username.toLowerCase());
+  if (!user) return done(null, false, { message: 'Invalid username or password' });
+
+  const valid = await bcrypt.compare(password, user.passwordHash);
+  if (!valid) return done(null, false, { message: 'Invalid username or password' });
+
+  return done(null, {
+    username: user.username,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    repId: user.repId,
+    mustChangePassword: user.mustChangePassword
+  });
+}));
+
+// ── MS365 / Azure AD strategy (optional) ──
 if (MS365_ENABLED) {
-  passport.serializeUser((user, done) => done(null, user));
-  passport.deserializeUser((user, done) => done(null, user));
-
   passport.use(new OIDCStrategy({
     identityMetadata: `https://login.microsoftonline.com/${process.env.MS365_TENANT_ID}/v2.0/.well-known/openid-configuration`,
     clientID: process.env.MS365_CLIENT_ID,
@@ -51,27 +99,50 @@ if (MS365_ENABLED) {
     scope: ['profile', 'email', 'openid'],
     passReqToCallback: false
   }, (iss, sub, profile, accessToken, refreshToken, done) => {
-    // Only allow @rubberform.com emails
     const email = (profile.upn || profile._json?.email || '').toLowerCase();
-    if (email.endsWith('@rubberform.com')) {
+    if (!email.endsWith('@rubberform.com')) {
+      return done(null, false, { message: 'Access restricted to RubberForm employees' });
+    }
+    // Check if this email maps to a local user account
+    const users = loadUsers();
+    const localUser = users.find(u => u.email === email);
+    if (localUser) {
       return done(null, {
-        id: profile.oid,
-        name: profile.displayName,
-        email: email
+        username: localUser.username,
+        name: localUser.name,
+        email: localUser.email,
+        role: localUser.role,
+        repId: localUser.repId,
+        mustChangePassword: false
       });
     }
-    return done(null, false, { message: 'Access restricted to RubberForm employees' });
+    return done(null, {
+      id: profile.oid,
+      name: profile.displayName,
+      email: email,
+      role: 'admin'
+    });
   }));
-
-  app.use(passport.initialize());
-  app.use(passport.session());
 }
+
+app.use(passport.initialize());
+app.use(passport.session());
 
 // ── Auth middleware ──
 function ensureAuth(req, res, next) {
-  if (!MS365_ENABLED) return next(); // Skip auth if not configured
-  if (req.isAuthenticated()) return next();
+  if (req.isAuthenticated()) {
+    // Redirect to change-password if required (except for the change-password route itself)
+    if (req.user.mustChangePassword && req.path !== '/change-password' && !req.path.startsWith('/api/')) {
+      return res.redirect('/change-password');
+    }
+    return next();
+  }
   res.redirect('/login');
+}
+
+function ensureAdmin(req, res, next) {
+  if (req.user && req.user.role === 'admin') return next();
+  res.status(403).send('Admin access required');
 }
 
 // ── Load shared data ──
@@ -118,8 +189,20 @@ function classifyEstimateStatus(statusDisplay, lostReason) {
 
 // ── Auth routes ──
 app.get('/login', (req, res) => {
-  if (!MS365_ENABLED) return res.redirect('/');
-  res.render('login');
+  if (req.isAuthenticated()) return res.redirect('/');
+  res.render('login', { error: req.query.error || null, MS365_ENABLED });
+});
+
+app.post('/login', (req, res, next) => {
+  passport.authenticate('local', (err, user, info) => {
+    if (err) return next(err);
+    if (!user) return res.redirect('/login?error=' + encodeURIComponent(info?.message || 'Login failed'));
+    req.logIn(user, (err) => {
+      if (err) return next(err);
+      if (user.mustChangePassword) return res.redirect('/change-password');
+      res.redirect('/');
+    });
+  })(req, res, next);
 });
 
 if (MS365_ENABLED) {
@@ -133,10 +216,62 @@ app.get('/logout', (req, res) => {
   req.logout(() => res.redirect('/login'));
 });
 
+// ── Change Password ──
+app.get('/change-password', (req, res) => {
+  if (!req.isAuthenticated()) return res.redirect('/login');
+  res.render('change-password', {
+    user: req.user,
+    forced: req.user.mustChangePassword,
+    error: req.query.error || null,
+    success: req.query.success || null,
+    MS365_ENABLED
+  });
+});
+
+app.post('/change-password', async (req, res) => {
+  if (!req.isAuthenticated()) return res.redirect('/login');
+  const { currentPassword, newPassword, confirmPassword } = req.body;
+
+  if (newPassword !== confirmPassword) {
+    return res.redirect('/change-password?error=' + encodeURIComponent('Passwords do not match'));
+  }
+  if (newPassword.length < 6) {
+    return res.redirect('/change-password?error=' + encodeURIComponent('Password must be at least 6 characters'));
+  }
+
+  const users = loadUsers();
+  const user = users.find(u => u.username === req.user.username);
+  if (!user) return res.redirect('/login');
+
+  // Verify current password (skip for forced change if password is still the default)
+  if (!user.mustChangePassword) {
+    const valid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!valid) {
+      return res.redirect('/change-password?error=' + encodeURIComponent('Current password is incorrect'));
+    }
+  }
+
+  user.passwordHash = await bcrypt.hash(newPassword, 10);
+  user.mustChangePassword = false;
+  saveUsers(users);
+
+  // Update session
+  req.user.mustChangePassword = false;
+
+  res.redirect('/change-password?success=' + encodeURIComponent('Password changed successfully'));
+});
+
 // ── Dashboard ──
 app.get('/', ensureAuth, (req, res) => {
   const reps = loadReps();
-  const repsWithICP = reps.map(rep => ({
+  let visibleReps = reps;
+
+  // Sales reps see only their own profile
+  if (req.user.role === 'sales_rep' && req.user.repId) {
+    visibleReps = reps.filter(r => r.id === req.user.repId);
+  }
+
+  const repsWithICP = visibleReps.map(rep => ({
     ...rep,
     icp: loadICP(rep.id)
   }));
