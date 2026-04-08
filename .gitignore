@@ -1,6 +1,6 @@
 node_modules/
 .env
-config/users.json
+# config/users.json — now tracked (only contains bcrypt hashes, not plaintext)
 logs/runs/*.json
 # config/icps/*.json  — tracking ICPs in git for visibility
 *.log

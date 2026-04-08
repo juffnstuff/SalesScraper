@@ -1,0 +1,72 @@
+[
+  {
+    "username": "jeff",
+    "passwordHash": "$2b$10$OnDBQeTu1PKpDDaKWpvNPO7ZP7EihXPZRQ/2kEj4uCei7J4Xz8KO.",
+    "name": "Jeff Robbins",
+    "email": "jeff@rubberform.com",
+    "role": "admin",
+    "repId": null,
+    "mustChangePassword": false,
+    "createdAt": "2026-04-08T03:18:12.733Z"
+  },
+  {
+    "username": "galen",
+    "passwordHash": "$2b$10$3zdV1iilVbB1l4i.A0ErteCF5tGiQ4CqDmO/r/FnmlU/Qr5.TOPGG",
+    "name": "Galen Reich",
+    "email": "galen@rubberform.com",
+    "role": "sales_rep",
+    "repId": "galen_reich",
+    "mustChangePassword": true,
+    "createdAt": "2026-04-08T03:18:12.815Z"
+  },
+  {
+    "username": "andrew",
+    "passwordHash": "$2b$10$HhjYPWlYfzY0EUNfXthBDevwVI7oxXS2yp/.0nF7CbMraH1D92CQu",
+    "name": "Andrew Gibson",
+    "email": "andrew@rubberform.com",
+    "role": "sales_rep",
+    "repId": "andrew_gibson",
+    "mustChangePassword": true,
+    "createdAt": "2026-04-08T03:18:12.896Z"
+  },
+  {
+    "username": "nickz",
+    "passwordHash": "$2b$10$ZfL7gWBccAbt6RmlMq20o.DzPo8FS2ik4tAFD7ii1D8xx9flyPAPy",
+    "name": "Nick Zielinski",
+    "email": "nickz@rubberform.com",
+    "role": "sales_rep",
+    "repId": "nick_zielinski",
+    "mustChangePassword": true,
+    "createdAt": "2026-04-08T03:18:12.976Z"
+  },
+  {
+    "username": "bradb",
+    "passwordHash": "$2b$10$d2YgmiCyK3mgBMCEs5bZjOERhL3kpCu5csO6ONv76gDqtRaKm2d.O",
+    "name": "Brad Backman",
+    "email": "bradb@rubberform.com",
+    "role": "sales_rep",
+    "repId": "brad_backman",
+    "mustChangePassword": true,
+    "createdAt": "2026-04-08T03:18:13.053Z"
+  },
+  {
+    "username": "bill",
+    "passwordHash": "$2b$10$QrFj.I95mkMtf3oDWvmLBewlo6j8AvjrXYILqq1D0MhDJ9rse8QkW",
+    "name": "Bill Robbins",
+    "email": "bill@rubberform.com",
+    "role": "admin",
+    "repId": "bill_robbins",
+    "mustChangePassword": true,
+    "createdAt": "2026-04-08T03:18:13.132Z"
+  },
+  {
+    "username": "jake",
+    "passwordHash": "$2b$10$AwCJu2T4iUFDVXDvkq.4cen7jmVp9ZfDnJxpmdMyco53idWFJdtam",
+    "name": "Jake Robbins",
+    "email": "jake@rubberform.com",
+    "role": "admin",
+    "repId": "jake_robbins",
+    "mustChangePassword": true,
+    "createdAt": "2026-04-08T03:18:13.211Z"
+  }
+]
