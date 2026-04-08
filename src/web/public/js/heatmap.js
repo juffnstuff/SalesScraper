@@ -317,15 +317,19 @@ function showProjectDetail(project) {
   // Contractors section
   if (project.contractors && project.contractors.length > 0) {
     html += '<div class="mt-3 border-top pt-2">';
-    html += '<strong class="small"><i class="bi bi-people-fill text-success"></i> Contractors / Bidders:</strong>';
+    html += `<strong class="small"><i class="bi bi-people-fill text-success"></i> Companies Found (${project.contractors.length}):</strong>`;
     for (const c of project.contractors) {
       html += '<div class="contractor-card">';
       html += `<div class="fw-bold small">${escapeHtml(c.name)}</div>`;
-      if (c.role) html += `<small class="text-muted">${escapeHtml(c.role)}</small>`;
-      if (c.website) html += `<br><a href="${escapeHtml(c.website)}" target="_blank" class="small">${escapeHtml(c.website)}</a>`;
+      const details = [];
+      if (c.role) details.push(c.role);
+      if (c.specialty) details.push(c.specialty);
+      if (details.length) html += `<small class="text-muted">${escapeHtml(details.join(' — '))}</small>`;
+      if (c.website) html += `<br><a href="${escapeHtml(c.website)}" target="_blank" class="small text-primary">${escapeHtml(c.website)}</a>`;
       if (c.phone) html += `<br><small><i class="bi bi-telephone"></i> ${escapeHtml(c.phone)}</small>`;
       html += '</div>';
     }
+    html += '<div class="mt-2"><small class="text-muted"><i class="bi bi-info-circle"></i> These are the companies to market RubberForm products to.</small></div>';
     html += '</div>';
   } else {
     // Find Contractors button

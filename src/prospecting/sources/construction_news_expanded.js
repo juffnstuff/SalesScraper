@@ -377,41 +377,64 @@ If nothing relevant found, return []. Return ONLY the JSON array.`
 
   async searchContractor(project) {
     try {
-      const location = [project.city, project.state].filter(Boolean).join(' ');
+      const location = [project.city, project.state].filter(Boolean).join(', ');
+      const sourceUrl = project.sourceUrl || '';
+      const owner = project.owner || 'Unknown';
+      const gc = project.generalContractor || '';
+
+      // Two-step approach:
+      // Step 1: Read the original source article to extract company names and clues
+      // Step 2: Use those clues to search for more info on the companies found
       const response = await this.anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 2000,
+        max_tokens: 4000,
         tools: [{
           type: 'web_search_20250305',
           name: 'web_search',
-          max_uses: 3
+          max_uses: 5
         }],
         messages: [{
           role: 'user',
-          content: `Search for the contractors and companies involved in this construction project:
+          content: `You are researching a construction project to find every company involved. Your goal is to identify the contractors, developers, engineers, and architects so a building products manufacturer can market to them.
 
-Project: ${project.projectName}
-Location: ${location}
-Owner/Developer: ${project.owner || 'Unknown'}
-Type: ${project.projectType || 'Construction'}
+PROJECT INFO:
+- Name: ${project.projectName}
+- Location: ${location}
+- Owner/Developer: ${owner}
+- General Contractor: ${gc || 'Unknown'}
+- Type: ${project.projectType || 'Construction'}
+${sourceUrl ? `- Original article: ${sourceUrl}` : ''}
 
-Find:
-1. The general contractor (GC) who won the bid or is doing the work
-2. Any major subcontractors involved
-3. The developer or project owner if not already known
-4. Company websites or phone numbers if available
-5. The source URL where you found this information
+STEP 1: ${sourceUrl ? `First, read the original article at ${sourceUrl}. Look for:` : 'Search for this project and look for:'}
+- General contractor (GC) name
+- Subcontractors mentioned
+- Developer or owner company
+- Architecture/engineering firm
+- Any company names, especially those doing site work, paving, concrete, safety, or infrastructure
 
-Return a JSON array of companies found:
+STEP 2: Once you have company names from the article, search for each one to find:
+- Their company website
+- Phone number or contact info
+- What they specialize in
+
+STEP 3: Also try searching for:
+- "${project.projectName}" contractor
+- "${project.projectName}" bid award
+- Any local construction news about this project with additional company names
+
+Be thorough. The companies involved in construction projects are who we sell safety products to (wheel stops, speed bumps, cable support towers, trackout mats, spill containment, etc).
+
+Return a JSON array of ALL companies found:
 [{
   "name": "Company Name",
-  "role": "General Contractor|Subcontractor|Developer|Engineer|Architect",
+  "role": "General Contractor|Subcontractor|Developer|Engineer|Architect|Owner",
+  "specialty": "what they do (e.g. earthwork, paving, electrical, site prep)",
   "website": "https://...",
   "phone": "xxx-xxx-xxxx",
-  "source": "https://... where you found this"
+  "source": "URL where you found this info"
 }]
 
-If no contractors or companies found, return []. Return ONLY the JSON array.`
+If no companies found, return []. Return ONLY the JSON array, no other text.`
         }]
       });
 
