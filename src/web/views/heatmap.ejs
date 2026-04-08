@@ -18,14 +18,17 @@
   <div class="col-md-8">
     <div class="d-flex gap-2 align-items-center flex-wrap">
       <span class="fw-bold small text-muted">FILTER:</span>
-      <button class="btn btn-sm stage-toggle active" id="toggleConstruction" data-stage="construction" style="background: #ea580c; color: white; border: 2px solid #ea580c;">
+      <button class="btn btn-sm stage-toggle active" data-stage="parking" style="background: #2563eb; color: white; border: 2px solid #2563eb;">
+        <i class="bi bi-p-square"></i> Parking Lot Safety
+      </button>
+      <button class="btn btn-sm stage-toggle active" data-stage="industrial" style="background: #7c3aed; color: white; border: 2px solid #7c3aed;">
+        <i class="bi bi-gear"></i> Industrial Safety
+      </button>
+      <button class="btn btn-sm stage-toggle active" data-stage="municipal" style="background: #16a34a; color: white; border: 2px solid #16a34a;">
+        <i class="bi bi-sign-stop"></i> Municipal / Traffic
+      </button>
+      <button class="btn btn-sm stage-toggle active" data-stage="construction" style="background: #ea580c; color: white; border: 2px solid #ea580c;">
         <i class="bi bi-building"></i> Construction
-      </button>
-      <button class="btn btn-sm stage-toggle active" id="toggleParking" data-stage="parking_industrial" style="background: #2563eb; color: white; border: 2px solid #2563eb;">
-        <i class="bi bi-p-square"></i> Parking / Industrial
-      </button>
-      <button class="btn btn-sm stage-toggle active" id="toggleMunicipal" data-stage="municipal" style="background: #16a34a; color: white; border: 2px solid #16a34a;">
-        <i class="bi bi-sign-stop"></i> Municipal / Traffic Calming
       </button>
       <span class="mx-2 text-muted">|</span>
       <select class="form-select form-select-sm" id="timeRange" style="width: auto;">
@@ -68,7 +71,7 @@
 
 <!-- Summary Stats -->
 <div class="row g-3 mt-2 mb-3">
-  <div class="col-md-3">
+  <div class="col">
     <div class="card text-center">
       <div class="card-body py-2">
         <div class="stat-value" id="statTotal">0</div>
@@ -76,27 +79,35 @@
       </div>
     </div>
   </div>
-  <div class="col-md-3">
+  <div class="col">
     <div class="card text-center">
       <div class="card-body py-2">
-        <div class="stat-value stage-construction" id="statConstruction">0</div>
-        <div class="stat-label">Construction Starts</div>
+        <div class="stat-value" style="color:#2563eb;" id="statParking">0</div>
+        <div class="stat-label">Parking Lot Safety</div>
       </div>
     </div>
   </div>
-  <div class="col-md-3">
+  <div class="col">
     <div class="card text-center">
       <div class="card-body py-2">
-        <div class="stat-value stage-parking" id="statParking">0</div>
-        <div class="stat-label">Parking / Industrial</div>
+        <div class="stat-value" style="color:#7c3aed;" id="statIndustrial">0</div>
+        <div class="stat-label">Industrial Safety</div>
       </div>
     </div>
   </div>
-  <div class="col-md-3">
+  <div class="col">
     <div class="card text-center">
       <div class="card-body py-2">
-        <div class="stat-value stage-municipal" id="statMunicipal">0</div>
-        <div class="stat-label">Municipal / Traffic Calming</div>
+        <div class="stat-value" style="color:#16a34a;" id="statMunicipal">0</div>
+        <div class="stat-label">Municipal / Traffic</div>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card text-center">
+      <div class="card-body py-2">
+        <div class="stat-value" style="color:#ea580c;" id="statConstruction">0</div>
+        <div class="stat-label">Construction</div>
       </div>
     </div>
   </div>
@@ -109,16 +120,20 @@
       <div class="card-body py-2 d-flex gap-4 flex-wrap align-items-center">
         <span class="fw-bold small text-muted">LEGEND:</span>
         <div class="legend-item">
-          <span class="legend-dot" style="background: #ea580c;"></span>
-          <small><strong>Construction Starts</strong> — Data centers, highways, warehouses, campuses</small>
+          <span class="legend-dot" style="background: #2563eb;"></span>
+          <small><strong>Parking Lot Safety</strong> — Wheel stops, sign bases, bollards, speed bumps</small>
         </div>
         <div class="legend-item">
-          <span class="legend-dot" style="background: #2563eb;"></span>
-          <small><strong>Parking / Industrial</strong> — Parking lots, commercial, retail, paving</small>
+          <span class="legend-dot" style="background: #7c3aed;"></span>
+          <small><strong>Industrial Safety</strong> — Cable towers, spill berms, data centers, warehouses</small>
         </div>
         <div class="legend-item">
           <span class="legend-dot" style="background: #16a34a;"></span>
-          <small><strong>Municipal / Traffic Calming</strong> — Vision Zero, school zones, safe streets</small>
+          <small><strong>Municipal / Traffic</strong> — Speed cushions, bike lane curbs, roundabouts</small>
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot" style="background: #ea580c;"></span>
+          <small><strong>Construction</strong> — Trackout mats, sediment control, pipe ramps</small>
         </div>
       </div>
     </div>

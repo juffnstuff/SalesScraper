@@ -62,9 +62,10 @@ body { background-color: #f5f6fa; }
 .layer-converted { color: #2563eb; }
 .layer-lost { color: #dc2626; }
 .heatmap-sidebar { max-height: 520px; overflow-y: auto; }
-.stage-construction { color: #ea580c; }
 .stage-parking { color: #2563eb; }
+.stage-industrial { color: #7c3aed; }
 .stage-municipal { color: #16a34a; }
+.stage-construction { color: #ea580c; }
 .stage-toggle { transition: opacity 0.2s; }
 .stage-toggle:hover { opacity: 0.85 !important; }
 .legend-item { display: flex; align-items: center; gap: 6px; }

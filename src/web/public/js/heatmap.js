@@ -3,11 +3,12 @@
  * Interactive US construction activity map using Leaflet.js
  */
 
-// Stage colors
+// Stage colors — RubberForm's 4 market verticals
 const STAGE_COLORS = {
-  construction: '#ea580c',
-  parking_industrial: '#2563eb',
-  municipal: '#16a34a'
+  parking: '#2563eb',
+  industrial: '#7c3aed',
+  municipal: '#16a34a',
+  construction: '#ea580c'
 };
 
 // Global state
@@ -15,11 +16,12 @@ let map;
 let allProjects = [];
 let geoData = null; // city coords loaded from JSON
 let markerLayers = {
-  construction: null,
-  parking_industrial: null,
-  municipal: null
+  parking: null,
+  industrial: null,
+  municipal: null,
+  construction: null
 };
-let activeStages = { construction: true, parking_industrial: true, municipal: true };
+let activeStages = { parking: true, industrial: true, municipal: true, construction: true };
 
 // US state boundary GeoJSON URL (simplified, free)
 const US_STATES_GEOJSON = '/data/us-states.json';
@@ -201,9 +203,10 @@ function showProjectDetail(project) {
   const stage = project.lifecycleStage || 'construction';
   const color = STAGE_COLORS[stage];
   const stageLabel = {
-    construction: 'Construction Start',
-    parking_industrial: 'Parking / Industrial',
-    municipal: 'Municipal / Traffic Calming'
+    parking: 'Parking Lot Safety',
+    industrial: 'Industrial Safety',
+    municipal: 'Municipal / Traffic Calming',
+    construction: 'Construction'
   }[stage] || stage;
 
   title.innerHTML = `<i class="bi bi-geo-alt-fill" style="color:${color}"></i> Project Details`;
@@ -334,9 +337,10 @@ async function scanForNews() {
 
 function updateStats(summary) {
   document.getElementById('statTotal').textContent = summary.total || 0;
-  document.getElementById('statConstruction').textContent = summary.construction || 0;
-  document.getElementById('statParking').textContent = summary.parking_industrial || 0;
+  document.getElementById('statParking').textContent = summary.parking || 0;
+  document.getElementById('statIndustrial').textContent = summary.industrial || 0;
   document.getElementById('statMunicipal').textContent = summary.municipal || 0;
+  document.getElementById('statConstruction').textContent = summary.construction || 0;
 }
 
 function escapeHtml(str) {

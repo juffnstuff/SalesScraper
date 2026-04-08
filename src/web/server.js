@@ -516,9 +516,10 @@ app.get('/api/heatmap-data', ensureAuth, (req, res) => {
 
   const summary = {
     total: projects.length,
-    construction: projects.filter(p => p.lifecycleStage === 'construction').length,
-    parking_industrial: projects.filter(p => p.lifecycleStage === 'parking_industrial').length,
-    municipal: projects.filter(p => p.lifecycleStage === 'municipal').length
+    parking: projects.filter(p => p.lifecycleStage === 'parking').length,
+    industrial: projects.filter(p => p.lifecycleStage === 'industrial').length,
+    municipal: projects.filter(p => p.lifecycleStage === 'municipal').length,
+    construction: projects.filter(p => p.lifecycleStage === 'construction').length
   };
 
   const byState = {};

@@ -11,31 +11,41 @@
 
 const Anthropic = require('@anthropic-ai/sdk');
 
-// Lifecycle stage keyword classification
+// RubberForm's 4 market verticals — keyword classification
 const LIFECYCLE_KEYWORDS = {
-  construction: [
-    'data center', 'highway', 'bridge', 'groundbreaking', 'site work',
-    'infrastructure', 'dot ', 'road construction', 'semiconductor', 'power plant',
-    'warehouse', 'distribution center', 'campus', 'solar', 'battery',
-    'ev charging', 'hospital', 'medical center', 'university', 'fab ',
-    'breaking ground', 'construction start', 'awarded contractor',
-    'general contractor', 'site preparation', 'foundation', 'excavation',
-    'renewable energy', 'wind farm', 'substation', 'transmission line'
-  ],
-  parking_industrial: [
-    'parking', 'paving', 'commercial', 'retail', 'sign base', 'wheel stop',
-    'bollard', 'speed bump', 'industrial park', 'resurfacing', 'striping',
-    'parking garage', 'parking lot', 'asphalt', 'shopping center',
-    'mixed-use', 'hotel', 'office building', 'property management',
-    'loading dock', 'curb', 'pavement marking'
-  ],
   municipal: [
-    'traffic calming', 'speed cushion', 'vision zero', 'safe streets',
-    'municipal', 'pedestrian safety', 'school zone', 'crosswalk',
-    'speed hump', 'bicycle', 'complete streets', 'traffic safety',
-    'city council', 'neighborhood safety', 'speed reduction',
-    'speed limit', 'traffic study', 'walk', 'bike lane',
-    'road diet', 'protected intersection', 'curb extension'
+    'traffic calming', 'speed cushion', 'speed table', 'vision zero', 'safe streets',
+    'complete streets', 'safe routes', 'bike lane', 'bus lane', 'roundabout',
+    'mini roundabout', 'school zone', 'pedestrian safety', 'crosswalk',
+    'speed reduction', 'road diet', 'protected intersection', 'curb extension',
+    'city council', 'neighborhood safety', 'traffic study', 'bicycle',
+    'municipal', 'traffic safety', 'speed limit', 'speed hump',
+    'traffic island', 'delineator', 'meridian'
+  ],
+  parking: [
+    'parking', 'parking garage', 'parking lot', 'parking deck', 'parking structure',
+    'parking facility', 'wheel stop', 'sign base', 'bollard', 'cart corral',
+    'speed bump', 'resurfacing', 'repaving', 'striping', 'pavement marking',
+    'shopping center', 'strip mall', 'retail center', 'mixed-use',
+    'hotel', 'office building', 'property management', 'commercial development',
+    'airport parking', 'asphalt'
+  ],
+  industrial: [
+    'data center', 'cable support', 'cord tree', 'spill containment', 'osha',
+    'industrial plant', 'power plant', 'substation', 'utility', 'solar farm',
+    'battery', 'gigafactory', 'semiconductor', 'fab ', 'ev charging',
+    'renewable energy', 'rooftop', 'chemical plant', 'refinery', 'oil gas',
+    'manufacturing', 'warehouse', 'distribution center', 'logistics',
+    'cold storage', 'fulfillment center', 'wind farm', 'transmission line',
+    'campus', 'hospital', 'medical center', 'university'
+  ],
+  construction: [
+    'construction entrance', 'trackout', 'sediment control', 'erosion control',
+    'stormwater', 'npdes', 'site preparation', 'earthwork', 'grading',
+    'highway', 'bridge', 'road construction', 'groundbreaking', 'breaking ground',
+    'construction start', 'awarded contractor', 'general contractor',
+    'foundation', 'excavation', 'waterline', 'water main', 'sewer',
+    'pipeline', 'infrastructure', 'dot ', 'site work', 'paving'
   ]
 };
 
@@ -57,19 +67,19 @@ class ConstructionNewsExpanded {
       result.generalContractor || ''
     ].join(' ').toLowerCase();
 
-    // Check municipal first (most specific)
+    // Check most specific first, broadest last
     for (const kw of LIFECYCLE_KEYWORDS.municipal) {
       if (text.includes(kw)) return 'municipal';
     }
-    // Then parking/industrial
-    for (const kw of LIFECYCLE_KEYWORDS.parking_industrial) {
-      if (text.includes(kw)) return 'parking_industrial';
+    for (const kw of LIFECYCLE_KEYWORDS.parking) {
+      if (text.includes(kw)) return 'parking';
     }
-    // Then construction (broadest)
+    for (const kw of LIFECYCLE_KEYWORDS.industrial) {
+      if (text.includes(kw)) return 'industrial';
+    }
     for (const kw of LIFECYCLE_KEYWORDS.construction) {
       if (text.includes(kw)) return 'construction';
     }
-    // Default
     return 'construction';
   }
 
