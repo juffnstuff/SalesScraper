@@ -1,7 +1,7 @@
 /**
- * RubberForm Prospecting Engine — Sales Heat Map
- * True density gradient heat map with drill-down detail panel.
- * Uses Leaflet.heat for gradient visualization + invisible markers for click interaction.
+ * RubberForm Prospecting Engine — Sales Map
+ * Colored dot markers with clustering, grouped by transaction layer.
+ * Uses Leaflet.MarkerCluster for grouped count badges + drill-down detail panel.
  */
 
 // Layer config
@@ -19,22 +19,11 @@ const LAYER_LABELS = {
   lost: 'Lost Quote'
 };
 
-// Heat map gradient (cool blue → warm yellow → hot red)
-const HEAT_GRADIENT = {
-  0.2: '#3b82f6',
-  0.4: '#06b6d4',
-  0.5: '#22c55e',
-  0.6: '#eab308',
-  0.8: '#f97316',
-  1.0: '#ef4444'
-};
-
 // Global state
 let map;
 let allTransactions = [];
 let geoData = null;
-let heatLayer = null;
-let clickMarkerLayer = null;
+let markerLayers = { shipped: null, open: null, converted: null, lost: null };
 let activeLayers = { shipped: true, open: true, converted: true, lost: true };
 let activeYears = {}; // populated dynamically from buttons
 
@@ -103,8 +92,23 @@ function initMap() {
     })
     .catch(e => console.warn('Could not load state boundaries:', e));
 
-  // Click marker layer (invisible markers for drill-down)
-  clickMarkerLayer = L.layerGroup().addTo(map);
+  // Per-layer marker cluster groups with colored count badges
+  for (const layerName of Object.keys(LAYER_COLORS)) {
+    const color = LAYER_COLORS[layerName];
+    markerLayers[layerName] = L.markerClusterGroup({
+      maxClusterRadius: 40,
+      iconCreateFunction: function(cluster) {
+        const count = cluster.getChildCount();
+        const size = count < 10 ? 30 : count < 50 ? 36 : 42;
+        return L.divIcon({
+          html: `<div style="background:${color}; color:white; border-radius:50%; width:${size}px; height:${size}px; display:flex; align-items:center; justify-content:center; font-size:${size < 36 ? 12 : 13}px; font-weight:bold; border:2px solid white; box-shadow:0 1px 3px rgba(0,0,0,0.3);">${count}</div>`,
+          className: '',
+          iconSize: [size, size]
+        });
+      }
+    });
+    map.addLayer(markerLayers[layerName]);
+  }
 }
 
 async function loadData() {
@@ -158,9 +162,10 @@ function toggleYear(btn) {
 }
 
 function updateMap() {
-  // Remove old heat layer
-  if (heatLayer) { map.removeLayer(heatLayer); heatLayer = null; }
-  clickMarkerLayer.clearLayers();
+  // Clear all marker layers
+  for (const layerName of Object.keys(markerLayers)) {
+    markerLayers[layerName].clearLayers();
+  }
 
   // Filter by active layers AND active years
   const anyYearActive = Object.values(activeYears).some(v => v);
@@ -176,47 +181,31 @@ function updateMap() {
   // Recompute stats from filtered data
   updateStats(filtered);
 
-  // Build heat points: [lat, lng, intensity]
-  // Intensity is based on revenue (log scale to avoid outlier domination)
-  const heatPoints = [];
-  const maxTotal = Math.max(...filtered.map(t => t.total || 1), 1);
-
+  // Add visible colored dot markers to per-layer cluster groups
   for (const txn of filtered) {
     const coords = getCoords(txn.city, txn.state);
     if (!coords) continue;
 
-    const jitter = () => (Math.random() - 0.5) * 0.03;
+    const jitter = () => (Math.random() - 0.5) * 0.02;
     const lat = coords[0] + jitter();
     const lng = coords[1] + jitter();
+    const color = LAYER_COLORS[txn.layer] || '#666';
 
-    // Log-scaled intensity: higher revenue = more heat
-    const intensity = 0.3 + 0.7 * (Math.log(1 + (txn.total || 0)) / Math.log(1 + maxTotal));
-    heatPoints.push([lat, lng, intensity]);
-
-    // Invisible click marker for drill-down
     const marker = L.circleMarker([lat, lng], {
-      radius: 8,
-      fillColor: 'transparent',
-      color: 'transparent',
-      fillOpacity: 0,
-      weight: 0
+      radius: 7,
+      fillColor: color,
+      color: '#fff',
+      weight: 2,
+      fillOpacity: 0.85
     });
+
     marker.on('click', () => showTransactionDetail(txn));
     const label = escapeHtml(txn.customerName || txn.tranId || '').substring(0, 50);
     if (label) marker.bindTooltip(label, { direction: 'top', offset: [0, -8] });
-    clickMarkerLayer.addLayer(marker);
-  }
 
-  // Create heat layer
-  if (heatPoints.length > 0) {
-    heatLayer = L.heatLayer(heatPoints, {
-      radius: 25,
-      blur: 20,
-      maxZoom: 10,
-      max: 1.0,
-      minOpacity: 0.35,
-      gradient: HEAT_GRADIENT
-    }).addTo(map);
+    if (markerLayers[txn.layer]) {
+      markerLayers[txn.layer].addLayer(marker);
+    }
   }
 }
 
@@ -431,12 +420,18 @@ function toggleLayer(btn) {
   if (activeLayers[layer]) {
     btn.classList.add('active');
     btn.style.opacity = '1';
+    if (markerLayers[layer] && !map.hasLayer(markerLayers[layer])) {
+      map.addLayer(markerLayers[layer]);
+    }
   } else {
     btn.classList.remove('active');
     btn.style.opacity = '0.4';
+    if (markerLayers[layer] && map.hasLayer(markerLayers[layer])) {
+      map.removeLayer(markerLayers[layer]);
+    }
   }
 
-  updateMap(); // Rebuild heat layer with new filter
+  updateMap();
 }
 
 function fmtDollars(n) {

@@ -819,7 +819,16 @@ app.post('/api/heatmap-contractor-search', ensureAuth, async (req, res) => {
     return res.status(500).json({ error: 'Could not read cache' });
   }
 
-  const project = cache.projects.find(p => p.projectName === projectName && p.state === state);
+  let project = cache.projects.find(p => p.projectName === projectName && p.state === state);
+  if (!project) {
+    // Case-insensitive fallback
+    const nameLower = projectName.toLowerCase().trim();
+    const stateLower = (state || '').toLowerCase().trim();
+    project = cache.projects.find(p =>
+      (p.projectName || '').toLowerCase().trim() === nameLower &&
+      (p.state || '').toLowerCase().trim() === stateLower
+    );
+  }
   if (!project) {
     console.warn(`[Contractor Search] Project not found: "${projectName}" / ${state}`);
     return res.status(404).json({ error: `Project "${projectName}" (${state}) not found in cache` });

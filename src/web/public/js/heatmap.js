@@ -332,11 +332,10 @@ function showProjectDetail(project) {
     html += '<div class="mt-2"><small class="text-muted"><i class="bi bi-info-circle"></i> These are the companies to market RubberForm products to.</small></div>';
     html += '</div>';
   } else {
-    // Find Contractors button
-    const pName = escapeHtml(project.projectName).replace(/'/g, "\\'");
-    const pState = escapeHtml(project.state || '');
+    // Find Contractors button — pass index to avoid string escaping issues
+    const pIdx = allProjects.indexOf(project);
     html += `<div class="mt-3 border-top pt-2">
-      <button class="btn btn-sm btn-outline-success w-100" id="contractorBtn" onclick="findContractors('${pName}', '${pState}')">
+      <button class="btn btn-sm btn-outline-success w-100" id="contractorBtn" onclick="findContractors(${pIdx})">
         <i class="bi bi-search"></i> Find Contractors / Bidders
       </button>
       <small class="text-muted d-block text-center mt-1">Uses AI web search to find who won the bid</small>
@@ -358,7 +357,11 @@ function showProjectDetail(project) {
 }
 
 // ── Contractor Discovery ──
-async function findContractors(projectName, state) {
+async function findContractors(projectIdx) {
+  const project = allProjects[projectIdx];
+  if (!project) return;
+  const { projectName, state } = project;
+
   const btn = document.getElementById('contractorBtn');
   if (!btn) return;
   btn.disabled = true;
@@ -400,13 +403,9 @@ async function findContractors(projectName, state) {
     const data = await resp.json();
 
     if (data.success && data.contractors && data.contractors.length > 0) {
-      // Update the project in allProjects and re-render detail
-      const project = allProjects.find(p => p.projectName === projectName && p.state === state);
-      if (project) {
-        project.contractors = data.contractors;
-        project.contractorSearched = true;
-        showProjectDetail(project);
-      }
+      project.contractors = data.contractors;
+      project.contractorSearched = true;
+      showProjectDetail(project);
     } else {
       const msg = data.error ? `Error: ${data.error}` : 'No contractors found';
       console.warn('Contractor search:', msg, data);
