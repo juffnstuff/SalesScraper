@@ -20,6 +20,8 @@ const REPS_PATH = path.join(__dirname, '../config/rep_profiles.json');
 const SALT_ROUNDS = 10;
 
 // Default user accounts
+const ADMIN_REPS = ['bill_robbins', 'jake_robbins'];
+
 function getDefaultUsers() {
   const reps = JSON.parse(fs.readFileSync(REPS_PATH, 'utf8'));
 
@@ -44,7 +46,7 @@ function getDefaultUsers() {
       password: username, // default password = username
       name: rep.name,
       email: rep.email,
-      role: 'sales_rep',
+      role: ADMIN_REPS.includes(rep.id) ? 'admin' : 'sales_rep',
       repId: rep.id
     });
   }
