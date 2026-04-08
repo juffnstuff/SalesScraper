@@ -373,6 +373,45 @@ If nothing relevant found, return []. Return ONLY the JSON array.`
     return this._deduplicateResults(results);
   }
 
+  // ── Article Fetcher (pre-fetch source article for Claude) ──
+
+  async _fetchArticleText(url) {
+    if (!url) return '';
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      const resp = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; RubberForm-Bot/1.0)',
+          'Accept': 'text/html,application/xhtml+xml'
+        },
+        redirect: 'follow'
+      });
+      clearTimeout(timeout);
+      if (!resp.ok) return '';
+      const html = await resp.text();
+      const text = html
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+        .replace(/<nav[^>]*>[\s\S]*?<\/nav>/gi, '')
+        .replace(/<header[^>]*>[\s\S]*?<\/header>/gi, '')
+        .replace(/<footer[^>]*>[\s\S]*?<\/footer>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/\s+/g, ' ')
+        .trim();
+      return text.substring(0, 6000);
+    } catch {
+      return '';
+    }
+  }
+
   // ── Contractor Discovery (secondary search for bid winners) ──
 
   async searchContractor(project) {
@@ -382,9 +421,21 @@ If nothing relevant found, return []. Return ONLY the JSON array.`
       const owner = project.owner || 'Unknown';
       const gc = project.generalContractor || '';
 
-      // Two-step approach:
-      // Step 1: Read the original source article to extract company names and clues
-      // Step 2: Use those clues to search for more info on the companies found
+      // Pre-fetch the source article so Claude has the full text
+      const articleText = await this._fetchArticleText(sourceUrl);
+      if (articleText) {
+        console.log(`    [Contractor] Fetched article (${articleText.length} chars) from ${sourceUrl}`);
+      } else if (sourceUrl) {
+        console.log(`    [Contractor] Could not fetch article from ${sourceUrl}, will search from scratch`);
+      }
+
+      // Build the prompt — include article text if we got it
+      const articleSection = articleText
+        ? `\nSOURCE ARTICLE CONTENT (extracted from ${sourceUrl}):\n---\n${articleText}\n---\n\nRead the article above carefully. Extract EVERY company, contractor, developer, engineer, architect, and firm mentioned by name. Then use web_search to find their website and phone number.`
+        : sourceUrl
+          ? `\nWe could not fetch the original article at ${sourceUrl}. Search for this project to find companies involved.`
+          : '\nNo source article available. Search for this project to find companies involved.';
+
       const response = await this.anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 4000,
@@ -403,26 +454,22 @@ PROJECT INFO:
 - Owner/Developer: ${owner}
 - General Contractor: ${gc || 'Unknown'}
 - Type: ${project.projectType || 'Construction'}
-${sourceUrl ? `- Original article: ${sourceUrl}` : ''}
+${articleSection}
 
-STEP 1: ${sourceUrl ? `First, read the original article at ${sourceUrl}. Look for:` : 'Search for this project and look for:'}
-- General contractor (GC) name
-- Subcontractors mentioned
-- Developer or owner company
-- Architecture/engineering firm
-- Any company names, especially those doing site work, paving, concrete, safety, or infrastructure
+INSTRUCTIONS:
+1. Extract all company names from the article text above (if provided). Look for:
+   - General contractor (GC)
+   - Subcontractors
+   - Developer or owner company
+   - Architecture/engineering firm
+   - Any company doing site work, paving, concrete, safety, or infrastructure
+2. For each company found, search the web for their website and phone number
+3. Also search for additional companies not in the article:
+   - "${project.projectName}" contractor awarded
+   - "${project.projectName}" bid award ${location}
+4. Include companies already known (owner: ${owner}${gc ? `, GC: ${gc}` : ''}) — search for their contact info too
 
-STEP 2: Once you have company names from the article, search for each one to find:
-- Their company website
-- Phone number or contact info
-- What they specialize in
-
-STEP 3: Also try searching for:
-- "${project.projectName}" contractor
-- "${project.projectName}" bid award
-- Any local construction news about this project with additional company names
-
-Be thorough. The companies involved in construction projects are who we sell safety products to (wheel stops, speed bumps, cable support towers, trackout mats, spill containment, etc).
+Be thorough. These companies are who we sell recycled rubber safety products to (wheel stops, speed bumps, cable support towers, trackout mats, spill containment, bollards, sign bases, etc).
 
 Return a JSON array of ALL companies found:
 [{
