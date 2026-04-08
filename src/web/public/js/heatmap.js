@@ -362,14 +362,41 @@ async function findContractors(projectName, state) {
   const btn = document.getElementById('contractorBtn');
   if (!btn) return;
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Searching...';
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Fetching article & searching...';
+
+  // Progress updates while waiting
+  const stages = [
+    { delay: 5000, text: 'Reading source article...' },
+    { delay: 15000, text: 'Searching for contractors...' },
+    { delay: 30000, text: 'Looking up contact info...' },
+    { delay: 50000, text: 'Almost done...' }
+  ];
+  const timers = stages.map(s => setTimeout(() => {
+    if (btn.disabled) btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> ${s.text}`;
+  }, s.delay));
 
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 90000); // 90s timeout
+
     const resp = await fetch('/api/heatmap-contractor-search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectName, state })
+      body: JSON.stringify({ projectName, state }),
+      signal: controller.signal
     });
+    clearTimeout(timeout);
+    timers.forEach(t => clearTimeout(t));
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }));
+      console.error('Contractor search error:', err);
+      btn.innerHTML = `<i class="bi bi-exclamation-triangle"></i> ${err.error || 'Server error'}`;
+      btn.classList.replace('btn-outline-success', 'btn-outline-danger');
+      btn.disabled = false;
+      return;
+    }
+
     const data = await resp.json();
 
     if (data.success && data.contractors && data.contractors.length > 0) {
@@ -381,12 +408,18 @@ async function findContractors(projectName, state) {
         showProjectDetail(project);
       }
     } else {
-      btn.innerHTML = '<i class="bi bi-x-circle"></i> No contractors found';
+      const msg = data.error ? `Error: ${data.error}` : 'No contractors found';
+      console.warn('Contractor search:', msg, data);
+      btn.innerHTML = `<i class="bi bi-x-circle"></i> ${msg}`;
       btn.classList.replace('btn-outline-success', 'btn-outline-warning');
       btn.disabled = false;
     }
   } catch (e) {
-    btn.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Search failed';
+    timers.forEach(t => clearTimeout(t));
+    const msg = e.name === 'AbortError' ? 'Search timed out (90s)' : `Search failed: ${e.message}`;
+    console.error('Contractor search error:', e);
+    btn.innerHTML = `<i class="bi bi-exclamation-triangle"></i> ${msg}`;
+    btn.classList.replace('btn-outline-success', 'btn-outline-danger');
     btn.disabled = false;
   }
 }

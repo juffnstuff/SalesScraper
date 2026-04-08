@@ -808,16 +808,22 @@ app.post('/api/heatmap-contractor-search', ensureAuth, async (req, res) => {
   const { projectName, state } = req.body;
   if (!projectName) return res.status(400).json({ error: 'projectName required' });
 
+  console.log(`[Contractor Search] Starting: "${projectName}" (${state})`);
+
   const cachePath = path.join(__dirname, '../../data/news_cache.json');
   let cache;
   try {
     cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
-  } catch {
+  } catch (e) {
+    console.error('[Contractor Search] Cache read error:', e.message);
     return res.status(500).json({ error: 'Could not read cache' });
   }
 
   const project = cache.projects.find(p => p.projectName === projectName && p.state === state);
-  if (!project) return res.status(404).json({ error: 'Project not found in cache' });
+  if (!project) {
+    console.warn(`[Contractor Search] Project not found: "${projectName}" / ${state}`);
+    return res.status(404).json({ error: `Project "${projectName}" (${state}) not found in cache` });
+  }
 
   try {
     const ConstructionNewsExpanded = require('../prospecting/sources/construction_news_expanded');
@@ -827,11 +833,12 @@ app.post('/api/heatmap-contractor-search', ensureAuth, async (req, res) => {
     // Save back to cache
     project.contractors = contractors;
     project.contractorSearched = true;
-    fs.writeFileSync(cachePath, JSON.stringify(cache));
+    fs.writeFileSync(cachePath, JSON.stringify(cache, null, 2));
 
+    console.log(`[Contractor Search] Done: "${projectName}" → ${contractors.length} companies found`);
     res.json({ success: true, contractors });
   } catch (error) {
-    console.error('Contractor search error:', error.message);
+    console.error('[Contractor Search] Error:', error.stack || error.message);
     res.json({ success: false, error: error.message, contractors: [] });
   }
 });
