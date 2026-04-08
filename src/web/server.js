@@ -607,7 +607,9 @@ app.get('/api/heatmap-data', ensureAuth, (req, res) => {
           source: p.source || '',
           relevanceScore: p.relevanceScore || 0,
           lifecycleStage: p.lifecycleStage || ConstructionNewsExpanded.classifyLifecycleStage(p),
-          notes: (p.notes || '').substring(0, 200)
+          notes: (p.notes || '').substring(0, 200),
+          contractors: p.contractors || [],
+          contractorSearched: p.contractorSearched || false
         });
       }
     }
@@ -764,6 +766,113 @@ app.post('/api/heatmap-scan', ensureAuth, async (req, res) => {
   }
 });
 
+// ── API: Regional Deep Scan (state-by-state via region batching) ──
+app.post('/api/heatmap-scan-regional', ensureAuth, async (req, res) => {
+  try {
+    const ConstructionNewsExpanded = require('../prospecting/sources/construction_news_expanded');
+    const searcher = new ConstructionNewsExpanded();
+
+    const { regions, verticals } = req.body || {};
+    const results = await searcher.searchByRegion({
+      regions: regions || undefined,
+      verticals: verticals || undefined
+    });
+
+    const { total, newCount } = mergeIntoNewsCache(results);
+
+    const projects = results.map(r => ({
+      projectName: r.projectName || 'Unknown',
+      projectType: r.projectType || '',
+      city: r.geography?.city || '',
+      state: r.geography?.state || '',
+      estimatedValue: r.estimatedValue || 0,
+      bidDate: r.bidDate || '',
+      owner: r.owner || '',
+      generalContractor: r.generalContractor || '',
+      sourceUrl: r.sourceUrl || '',
+      source: r.source || '',
+      relevanceScore: r.relevanceScore || 0,
+      lifecycleStage: r.lifecycleStage || ConstructionNewsExpanded.classifyLifecycleStage(r),
+      notes: (r.notes || '').substring(0, 200)
+    }));
+
+    res.json({ success: true, projects, count: projects.length, totalCached: total, newProjects: newCount });
+  } catch (error) {
+    console.error('Regional scan error:', error.message);
+    res.json({ success: false, error: error.message, projects: [] });
+  }
+});
+
+// ── API: Contractor Discovery (single project) ──
+app.post('/api/heatmap-contractor-search', ensureAuth, async (req, res) => {
+  const { projectName, state } = req.body;
+  if (!projectName) return res.status(400).json({ error: 'projectName required' });
+
+  const cachePath = path.join(__dirname, '../../data/news_cache.json');
+  let cache;
+  try {
+    cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+  } catch {
+    return res.status(500).json({ error: 'Could not read cache' });
+  }
+
+  const project = cache.projects.find(p => p.projectName === projectName && p.state === state);
+  if (!project) return res.status(404).json({ error: 'Project not found in cache' });
+
+  try {
+    const ConstructionNewsExpanded = require('../prospecting/sources/construction_news_expanded');
+    const searcher = new ConstructionNewsExpanded();
+    const contractors = await searcher.searchContractor(project);
+
+    // Save back to cache
+    project.contractors = contractors;
+    project.contractorSearched = true;
+    fs.writeFileSync(cachePath, JSON.stringify(cache));
+
+    res.json({ success: true, contractors });
+  } catch (error) {
+    console.error('Contractor search error:', error.message);
+    res.json({ success: false, error: error.message, contractors: [] });
+  }
+});
+
+// ── API: Batch Contractor Discovery (top N by value) ──
+app.post('/api/heatmap-contractor-batch', ensureAuth, async (req, res) => {
+  const limit = Math.min(parseInt(req.body.limit) || 10, 20);
+  const cachePath = path.join(__dirname, '../../data/news_cache.json');
+  let cache;
+  try {
+    cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+  } catch {
+    return res.status(500).json({ error: 'Could not read cache' });
+  }
+
+  const targets = cache.projects
+    .filter(p => !p.contractorSearched)
+    .sort((a, b) => (b.estimatedValue || 0) - (a.estimatedValue || 0))
+    .slice(0, limit);
+
+  const ConstructionNewsExpanded = require('../prospecting/sources/construction_news_expanded');
+  const searcher = new ConstructionNewsExpanded();
+
+  let enriched = 0;
+  for (const project of targets) {
+    try {
+      const contractors = await searcher.searchContractor(project);
+      project.contractors = contractors;
+      project.contractorSearched = true;
+      if (contractors.length > 0) enriched++;
+      await new Promise(r => setTimeout(r, 800));
+    } catch {
+      project.contractorSearched = true;
+      project.contractors = [];
+    }
+  }
+
+  fs.writeFileSync(cachePath, JSON.stringify(cache));
+  res.json({ success: true, enriched, total: targets.length });
+});
+
 // ── Background scan on startup (seeds news cache if empty or stale) ──
 async function runStartupScan() {
   const cachePath = path.join(__dirname, '../../data/news_cache.json');
@@ -824,7 +933,7 @@ app.get('/icp/:repId', ensureAuth, (req, res) => {
 app.listen(PORT, () => {
   console.log(`\n  🔧 RubberForm Prospecting Engine`);
   console.log(`  📊 Dashboard: http://localhost:${PORT}`);
-  console.log(`  🔐 Auth: ${MS365_ENABLED ? 'MS365 (Azure AD)' : 'Disabled (local mode)'}\n`);
+  console.log(`  🔐 Auth: Local${MS365_ENABLED ? ' + MS365 (Azure AD)' : ''}\n`);
 
   // Run background news scan if cache is stale
   runStartupScan().catch(e => console.error('Startup scan error:', e.message));

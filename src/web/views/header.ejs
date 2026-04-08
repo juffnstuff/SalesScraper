@@ -9,30 +9,58 @@
   <link href="/css/style.css" rel="stylesheet">
 </head>
 <body>
-  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-    <div class="container-fluid">
-      <a class="navbar-brand" href="/">
-        <i class="bi bi-bullseye"></i> RubberForm Prospecting
+  <!-- Fixed left sidebar -->
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <a href="/" class="text-decoration-none">
+        <i class="bi bi-bullseye text-success"></i>
+        <span class="text-white fw-bold">RubberForm</span>
       </a>
-      <div class="navbar-nav me-auto">
-        <a class="nav-link" href="/"><i class="bi bi-speedometer2"></i> Dashboard</a>
-        <a class="nav-link" href="/review"><i class="bi bi-check2-square"></i> Review</a>
-        <a class="nav-link" href="/heatmap"><i class="bi bi-geo-alt"></i> Heat Map</a>
-        <a class="nav-link" href="/salesmap"><i class="bi bi-pin-map"></i> Sales Map</a>
-        <a class="nav-link" href="/reports"><i class="bi bi-bar-chart"></i> Reports</a>
-      </div>
-      <div class="navbar-nav">
-        <% if (typeof user !== 'undefined' && user) { %>
-          <span class="nav-link text-light">
-            <i class="bi bi-person-circle"></i> <%= user.name %>
-            <% if (user.role) { %>
-              <span class="badge bg-<%= user.role === 'admin' ? 'warning text-dark' : 'info' %> ms-1" style="font-size:0.65rem;"><%= user.role === 'admin' ? 'Admin' : 'Rep' %></span>
-            <% } %>
-          </span>
-          <a class="nav-link" href="/change-password"><i class="bi bi-key"></i></a>
-          <a class="nav-link" href="/logout"><i class="bi bi-box-arrow-right"></i> Logout</a>
-        <% } %>
-      </div>
     </div>
-  </nav>
-  <div class="container-fluid mt-3">
+    <ul class="sidebar-nav">
+      <li><a href="/" class="sidebar-link"><i class="bi bi-speedometer2"></i><span>Dashboard</span></a></li>
+      <li><a href="/review" class="sidebar-link"><i class="bi bi-check2-square"></i><span>Review</span></a></li>
+      <li><a href="/heatmap" class="sidebar-link"><i class="bi bi-geo-alt"></i><span>Heat Map</span></a></li>
+      <li><a href="/salesmap" class="sidebar-link"><i class="bi bi-pin-map"></i><span>Sales Map</span></a></li>
+      <li><a href="/reports" class="sidebar-link"><i class="bi bi-bar-chart"></i><span>Reports</span></a></li>
+    </ul>
+    <div class="sidebar-footer">
+      <% if (typeof user !== 'undefined' && user) { %>
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <i class="bi bi-person-circle text-light"></i>
+          <div>
+            <div class="text-white small fw-bold"><%= user.name %></div>
+            <% if (user.role) { %>
+              <span class="badge bg-<%= user.role === 'admin' ? 'warning text-dark' : 'info' %>" style="font-size:0.6rem;"><%= user.role === 'admin' ? 'Admin' : 'Rep' %></span>
+            <% } %>
+          </div>
+        </div>
+        <div class="d-flex gap-2">
+          <a href="/change-password" class="btn btn-sm btn-outline-light flex-fill" style="font-size:0.7rem;"><i class="bi bi-key"></i></a>
+          <a href="/logout" class="btn btn-sm btn-outline-light flex-fill" style="font-size:0.7rem;"><i class="bi bi-box-arrow-right"></i> Logout</a>
+        </div>
+      <% } %>
+    </div>
+  </div>
+
+  <!-- Mobile top bar -->
+  <div class="topbar d-lg-none">
+    <button class="btn btn-sm btn-outline-light" onclick="document.getElementById('sidebar').classList.toggle('show')">
+      <i class="bi bi-list"></i>
+    </button>
+    <span class="text-white fw-bold"><i class="bi bi-bullseye text-success"></i> RubberForm</span>
+  </div>
+
+  <!-- Sidebar overlay for mobile -->
+  <div class="sidebar-overlay d-lg-none" id="sidebarOverlay" onclick="document.getElementById('sidebar').classList.remove('show')"></div>
+
+  <!-- Main content area -->
+  <div class="main-content">
+  <script>
+    // Highlight active nav link
+    document.querySelectorAll('.sidebar-link').forEach(link => {
+      if (link.getAttribute('href') === window.location.pathname) {
+        link.classList.add('active');
+      }
+    });
+  </script>

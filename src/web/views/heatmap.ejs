@@ -1,5 +1,6 @@
-<% title = 'Heat Map' %>
 <%- include('header') %>
+
+<% title = 'Heat Map' %>
 
 <!-- Leaflet CSS (local) -->
 <link rel="stylesheet" href="/vendor/leaflet/leaflet.css" />
@@ -9,7 +10,7 @@
 <div class="row mb-3">
   <div class="col">
     <h3><i class="bi bi-geo-alt-fill text-danger"></i> US Construction Activity Heat Map</h3>
-    <p class="text-muted mb-0">Construction projects mapped by product lifecycle stage. Data from all prospecting searches.</p>
+    <p class="text-muted mb-0">Construction projects mapped by product vertical. Click stat cards below to browse projects.</p>
   </div>
 </div>
 
@@ -19,18 +20,18 @@
     <div class="d-flex gap-2 align-items-center flex-wrap">
       <span class="fw-bold small text-muted">FILTER:</span>
       <button class="btn btn-sm stage-toggle active" data-stage="parking" style="background: #2563eb; color: white; border: 2px solid #2563eb;">
-        <i class="bi bi-p-square"></i> Parking Lot Safety
+        <i class="bi bi-p-square"></i> Parking
       </button>
       <button class="btn btn-sm stage-toggle active" data-stage="industrial" style="background: #7c3aed; color: white; border: 2px solid #7c3aed;">
-        <i class="bi bi-gear"></i> Industrial Safety
+        <i class="bi bi-gear"></i> Industrial
       </button>
       <button class="btn btn-sm stage-toggle active" data-stage="municipal" style="background: #16a34a; color: white; border: 2px solid #16a34a;">
-        <i class="bi bi-sign-stop"></i> Municipal / Traffic
+        <i class="bi bi-sign-stop"></i> Municipal
       </button>
       <button class="btn btn-sm stage-toggle active" data-stage="construction" style="background: #ea580c; color: white; border: 2px solid #ea580c;">
         <i class="bi bi-building"></i> Construction
       </button>
-      <span class="mx-2 text-muted">|</span>
+      <span class="mx-1 text-muted">|</span>
       <select class="form-select form-select-sm" id="timeRange" style="width: auto;">
         <option value="0">All Time</option>
         <option value="7">Last 7 Days</option>
@@ -40,10 +41,16 @@
     </div>
   </div>
   <div class="col-md-4 text-end">
-    <button class="btn btn-sm btn-outline-danger" id="scanBtn" onclick="scanForNews()">
-      <span class="scan-text"><i class="bi bi-search"></i> Scan for Fresh News</span>
-      <span class="scan-spinner"><span class="spinner-border spinner-border-sm"></span> Scanning... (2-3 min)</span>
-    </button>
+    <div class="btn-group">
+      <button class="btn btn-sm btn-outline-danger" id="scanBtn" onclick="scanForNews()">
+        <span class="scan-text"><i class="bi bi-search"></i> Quick Scan</span>
+        <span class="scan-spinner"><span class="spinner-border spinner-border-sm"></span> Scanning...</span>
+      </button>
+      <button class="btn btn-sm btn-outline-danger" id="regionalScanBtn" onclick="scanRegional()">
+        <span class="regional-text"><i class="bi bi-globe-americas"></i> Deep Scan</span>
+        <span class="regional-spinner"><span class="spinner-border spinner-border-sm"></span> <span id="regionalProgress">Scanning...</span></span>
+      </button>
+    </div>
   </div>
 </div>
 
@@ -56,23 +63,26 @@
   </div>
   <div class="col-lg-4">
     <div class="card heatmap-sidebar" id="sidebarCard">
-      <div class="card-header bg-white">
-        <h6 class="mb-0" id="sidebarTitle"><i class="bi bi-info-circle"></i> Click a marker for details</h6>
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h6 class="mb-0" id="sidebarTitle"><i class="bi bi-info-circle"></i> Click a stat card or marker</h6>
+        <button class="btn btn-sm btn-outline-secondary d-none" id="backToListBtn" onclick="backToList()">
+          <i class="bi bi-arrow-left"></i> Back
+        </button>
       </div>
       <div class="card-body p-0" id="sidebarContent">
         <div class="text-center text-muted py-5">
           <i class="bi bi-geo-alt" style="font-size: 3rem; opacity: 0.3;"></i>
-          <p class="mt-2">Select a project marker on the map to view details.</p>
+          <p class="mt-2">Click a stat card below or a marker on the map.</p>
         </div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- Summary Stats -->
+<!-- Summary Stats (clickable) -->
 <div class="row g-3 mt-2 mb-3">
   <div class="col">
-    <div class="card text-center">
+    <div class="card text-center stat-card" onclick="showProjectList('all')" style="cursor:pointer;">
       <div class="card-body py-2">
         <div class="stat-value" id="statTotal">0</div>
         <div class="stat-label">Total Projects</div>
@@ -80,7 +90,7 @@
     </div>
   </div>
   <div class="col">
-    <div class="card text-center">
+    <div class="card text-center stat-card" onclick="showProjectList('parking')" style="cursor:pointer;">
       <div class="card-body py-2">
         <div class="stat-value" style="color:#2563eb;" id="statParking">0</div>
         <div class="stat-label">Parking Lot Safety</div>
@@ -88,7 +98,7 @@
     </div>
   </div>
   <div class="col">
-    <div class="card text-center">
+    <div class="card text-center stat-card" onclick="showProjectList('industrial')" style="cursor:pointer;">
       <div class="card-body py-2">
         <div class="stat-value" style="color:#7c3aed;" id="statIndustrial">0</div>
         <div class="stat-label">Industrial Safety</div>
@@ -96,7 +106,7 @@
     </div>
   </div>
   <div class="col">
-    <div class="card text-center">
+    <div class="card text-center stat-card" onclick="showProjectList('municipal')" style="cursor:pointer;">
       <div class="card-body py-2">
         <div class="stat-value" style="color:#16a34a;" id="statMunicipal">0</div>
         <div class="stat-label">Municipal / Traffic</div>
@@ -104,7 +114,7 @@
     </div>
   </div>
   <div class="col">
-    <div class="card text-center">
+    <div class="card text-center stat-card" onclick="showProjectList('construction')" style="cursor:pointer;">
       <div class="card-body py-2">
         <div class="stat-value" style="color:#ea580c;" id="statConstruction">0</div>
         <div class="stat-label">Construction</div>

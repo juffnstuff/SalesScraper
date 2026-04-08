@@ -1,11 +1,120 @@
 /* RubberForm Prospecting Engine Styles */
 
-body { background-color: #f5f6fa; }
+body { background-color: #f5f6fa; margin: 0; }
 
+/* ── Left Sidebar Navigation ── */
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 220px;
+  height: 100vh;
+  background: #1e293b;
+  z-index: 1050;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.sidebar-brand {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #334155;
+  font-size: 1.1rem;
+}
+
+.sidebar-brand a { display: flex; align-items: center; gap: 8px; }
+
+.sidebar-nav {
+  list-style: none;
+  padding: 0.5rem 0;
+  margin: 0;
+  flex: 1;
+}
+
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 20px;
+  color: #94a3b8;
+  text-decoration: none;
+  font-size: 0.9rem;
+  border-left: 3px solid transparent;
+  transition: background 0.15s, color 0.15s;
+}
+
+.sidebar-link:hover {
+  background: #334155;
+  color: #e2e8f0;
+}
+
+.sidebar-link.active {
+  background: #334155;
+  color: #ffffff;
+  border-left-color: #22c55e;
+}
+
+.sidebar-link i { font-size: 1.1rem; width: 20px; text-align: center; }
+
+.sidebar-footer {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid #334155;
+}
+
+/* ── Mobile top bar ── */
+.topbar {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 48px;
+  background: #1e293b;
+  z-index: 1040;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+}
+
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  z-index: 1045;
+}
+
+/* ── Main content ── */
+.main-content {
+  margin-left: 220px;
+  padding: 1.25rem;
+  min-height: 100vh;
+}
+
+/* ── Mobile responsive ── */
+@media (max-width: 991.98px) {
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.25s ease;
+  }
+  .sidebar.show {
+    transform: translateX(0);
+  }
+  .sidebar.show ~ .sidebar-overlay {
+    display: block;
+  }
+  .topbar { display: flex !important; }
+  .main-content {
+    margin-left: 0;
+    padding-top: 60px;
+  }
+}
+
+/* ── Cards ── */
 .card { border: none; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
 .card-header { border-radius: 12px 12px 0 0 !important; }
 
-/* Score badges */
+/* ── Score badges ── */
 .score-high { background: #22c55e; color: white; }
 .score-mid { background: #f59e0b; color: white; }
 .score-low { background: #94a3b8; color: white; }
@@ -18,11 +127,11 @@ body { background-color: #f5f6fa; }
   font-size: 0.85rem;
 }
 
-/* Rep cards */
+/* ── Rep cards ── */
 .rep-card { transition: transform 0.15s; cursor: pointer; }
 .rep-card:hover { transform: translateY(-3px); box-shadow: 0 4px 16px rgba(0,0,0,0.1); }
 
-/* Product tags */
+/* ── Product tags ── */
 .product-tag {
   display: inline-block;
   background: #e2e8f0;
@@ -33,34 +142,35 @@ body { background-color: #f5f6fa; }
   color: #475569;
 }
 
-/* Result row */
+/* ── Result row ── */
 .result-row { border-left: 4px solid transparent; transition: background 0.1s; }
 .result-row:hover { background: #f8fafc; }
 .result-row.score-high-border { border-left-color: #22c55e; }
 .result-row.score-mid-border { border-left-color: #f59e0b; }
 
-/* Search loading */
+/* ── Search loading ── */
 .search-spinner { display: none; }
 .searching .search-spinner { display: inline-block; }
 .searching .search-text { display: none; }
 
-/* Stat cards */
+/* ── Stat cards ── */
 .stat-value { font-size: 2rem; font-weight: 700; color: #1e293b; }
 .stat-label { font-size: 0.8rem; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.5px; }
+.stat-card { transition: transform 0.15s, box-shadow 0.15s; }
+.stat-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
 
-/* Nav active */
-.navbar-dark .nav-link.active { color: #22c55e !important; }
-
-/* Heat Map */
+/* ── Heat Map ── */
 #heatmap { height: 520px; border-radius: 12px; z-index: 1; background: #f8fafc; }
 
-/* Sales Map */
+/* ── Sales Map ── */
 #salesmap { height: 600px; border-radius: 12px; z-index: 1; background: #f8fafc; }
 .salesmap-sidebar { max-height: 600px; overflow-y: auto; }
 .layer-shipped { color: #16a34a; }
 .layer-open { color: #ea580c; }
 .layer-converted { color: #2563eb; }
 .layer-lost { color: #dc2626; }
+
+/* ── Heatmap sidebar ── */
 .heatmap-sidebar { max-height: 520px; overflow-y: auto; }
 .stage-parking { color: #2563eb; }
 .stage-industrial { color: #7c3aed; }
@@ -73,3 +183,25 @@ body { background-color: #f5f6fa; }
 .scan-spinner { display: none; }
 .scanning .scan-spinner { display: inline-block; }
 .scanning .scan-text { display: none; }
+.regional-spinner { display: none; }
+.regional-scanning .regional-spinner { display: inline-block; }
+.regional-scanning .regional-text { display: none; }
+
+/* ── Project list in sidebar ── */
+.project-list-item {
+  border-bottom: 1px solid #f1f5f9;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.project-list-item:hover { background: #f8fafc; }
+.project-list-item:last-child { border-bottom: none; }
+
+/* ── Contractor cards ── */
+.contractor-card {
+  background: #f0fdf4;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-top: 6px;
+  border-left: 3px solid #22c55e;
+}

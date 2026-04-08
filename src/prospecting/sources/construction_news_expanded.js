@@ -322,6 +322,118 @@ If nothing relevant found, return []. Return ONLY the JSON array.`
       return true;
     });
   }
+
+  // ── Regional Search (state-by-state via region batching) ──
+
+  static REGIONS = {
+    'Northeast': ['CT','ME','MA','NH','RI','VT','NJ','NY','PA'],
+    'Southeast': ['AL','FL','GA','KY','MS','NC','SC','TN','VA','WV'],
+    'Midwest-East': ['IL','IN','MI','OH','WI'],
+    'Midwest-West': ['IA','KS','MN','MO','NE','ND','SD'],
+    'South-Central': ['AR','LA','OK','TX'],
+    'Mountain': ['AZ','CO','ID','MT','NV','NM','UT','WY'],
+    'Pacific': ['CA','OR','WA','HI','AK'],
+    'Mid-Atlantic': ['DC','DE','MD']
+  };
+
+  _buildRegionalQuery(vertical, stateList) {
+    const year = new Date().getFullYear();
+    const queries = {
+      parking: `parking garage parking lot construction project awarded ${year} in ${stateList}`,
+      industrial: `data center warehouse industrial plant construction groundbreaking ${year} in ${stateList}`,
+      municipal: `traffic calming Vision Zero speed cushion bike lane project ${year} in ${stateList}`,
+      construction: `highway bridge road construction project awarded contractor ${year} in ${stateList}`
+    };
+    return queries[vertical] || `construction project ${year} in ${stateList}`;
+  }
+
+  async searchByRegion(options = {}) {
+    const regionNames = options.regions || Object.keys(ConstructionNewsExpanded.REGIONS);
+    const verticals = options.verticals || ['parking', 'municipal', 'industrial', 'construction'];
+    const results = [];
+
+    for (const regionName of regionNames) {
+      const states = ConstructionNewsExpanded.REGIONS[regionName];
+      if (!states) continue;
+      const stateList = states.join(', ');
+
+      for (const vertical of verticals) {
+        const query = this._buildRegionalQuery(vertical, stateList);
+        try {
+          console.log(`    [News+Regional] ${regionName} / ${vertical}`);
+          const found = await this._runNewsSearch(query, vertical, {}, vertical);
+          results.push(...found);
+        } catch (error) {
+          console.warn(`    [News+Regional] ${regionName}/${vertical} failed: ${error.message}`);
+        }
+        await new Promise(r => setTimeout(r, 800));
+      }
+    }
+
+    return this._deduplicateResults(results);
+  }
+
+  // ── Contractor Discovery (secondary search for bid winners) ──
+
+  async searchContractor(project) {
+    try {
+      const location = [project.city, project.state].filter(Boolean).join(' ');
+      const response = await this.anthropic.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 2000,
+        tools: [{
+          type: 'web_search_20250305',
+          name: 'web_search',
+          max_uses: 3
+        }],
+        messages: [{
+          role: 'user',
+          content: `Search for the contractors and companies involved in this construction project:
+
+Project: ${project.projectName}
+Location: ${location}
+Owner/Developer: ${project.owner || 'Unknown'}
+Type: ${project.projectType || 'Construction'}
+
+Find:
+1. The general contractor (GC) who won the bid or is doing the work
+2. Any major subcontractors involved
+3. The developer or project owner if not already known
+4. Company websites or phone numbers if available
+5. The source URL where you found this information
+
+Return a JSON array of companies found:
+[{
+  "name": "Company Name",
+  "role": "General Contractor|Subcontractor|Developer|Engineer|Architect",
+  "website": "https://...",
+  "phone": "xxx-xxx-xxxx",
+  "source": "https://... where you found this"
+}]
+
+If no contractors or companies found, return []. Return ONLY the JSON array.`
+        }]
+      });
+
+      const textBlock = response.content.find(b => b.type === 'text');
+      if (!textBlock) return [];
+
+      let text = textBlock.text.trim();
+      if (text.startsWith('```')) {
+        text = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+      }
+
+      try {
+        const parsed = JSON.parse(text);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    } catch (error) {
+      console.warn(`    [Contractor] Search failed for "${project.projectName}": ${error.message}`);
+      return [];
+    }
+  }
 }
 
 module.exports = ConstructionNewsExpanded;
