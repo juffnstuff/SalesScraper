@@ -213,22 +213,25 @@ class ConstructionNewsExpanded {
     try {
       const response = await this.anthropic.messages.create({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 3000,
+        max_tokens: 8000,
         tools: [{
           type: 'web_search_20250305',
           name: 'web_search',
-          max_uses: 3
+          max_uses: 5
         }],
         messages: [{
           role: 'user',
           content: `You are a construction industry research assistant for RubberForm Recycled Products, a manufacturer of recycled rubber safety products (cable support towers, trackout mats, speed bumps, spill containment berms, wheel stops, bollards, sign bases, rubber curbs, speed cushions, delineators, etc.).
 
+Today is ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}. Search ID: ${Date.now().toString(36)}.
+
 Search for: ${query}
 
 Find REAL, CURRENT construction projects in the United States that are:
-- Recently awarded or breaking ground
+- Recently awarded or breaking ground (especially in the last 30-60 days)
 - In the planning/bidding phase
 - Major projects where contractors or municipalities would need safety products
+- Try to find projects you haven't returned before — look for DIFFERENT results each time
 
 For EACH project found, I need:
 1. The actual project name
@@ -239,6 +242,8 @@ For EACH project found, I need:
 6. The source URL where you found this
 
 Focus on ACTIONABLE opportunities — real projects with real companies or agencies we can contact.
+
+IMPORTANT: Return as many distinct projects as you can find (aim for 5-10+ per search). Use all your web_search calls to find different projects, not just details about one.
 
 Return a JSON array of objects:
 [{
@@ -316,7 +321,7 @@ If nothing relevant found, return []. Return ONLY the JSON array.`
   _deduplicateResults(results) {
     const seen = new Set();
     return results.filter(r => {
-      const key = (r.projectName + r.geography?.state).toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 60);
+      const key = (r.projectName + r.geography?.state).toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 120);
       if (seen.has(key)) return false;
       seen.add(key);
       return true;

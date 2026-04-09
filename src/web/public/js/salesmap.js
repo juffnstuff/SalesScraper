@@ -1,7 +1,7 @@
 /**
  * RubberForm Prospecting Engine — Sales Map
  * Colored dot markers with clustering, grouped by transaction layer.
- * Uses Leaflet.MarkerCluster for grouped count badges + drill-down detail panel.
+ * Cluster click shows record list; stat tile click shows full transaction list.
  */
 
 // Layer config
@@ -25,7 +25,9 @@ let allTransactions = [];
 let geoData = null;
 let markerLayers = { shipped: null, open: null, converted: null, lost: null };
 let activeLayers = { shipped: true, open: true, converted: true, lost: true };
-let activeYears = {}; // populated dynamically from buttons
+let activeYears = {};
+let currentListTransactions = [];
+let lastViewedLayer = null;
 
 const US_STATES_GEOJSON = '/data/us-states.json';
 
@@ -46,12 +48,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     btn.addEventListener('click', () => toggleLayer(btn));
   });
 
-  // Year toggle buttons
-  document.querySelectorAll('.year-toggle').forEach(btn => {
-    activeYears[btn.dataset.year] = true;
-    btn.addEventListener('click', () => toggleYear(btn));
-  });
-
   document.getElementById('repFilter').addEventListener('change', () => loadData());
 });
 
@@ -63,7 +59,6 @@ function initMap() {
     maxZoom: 18
   });
 
-  // Tile layer (graceful fallback)
   const tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
     attribution: '&copy; CARTO &copy; OSM',
     subdomains: 'abcd',
@@ -72,7 +67,6 @@ function initMap() {
   tileLayer.on('tileerror', () => {});
   tileLayer.addTo(map);
 
-  // State boundaries as base map
   fetch(US_STATES_GEOJSON)
     .then(r => r.json())
     .then(geojson => {
@@ -107,6 +101,16 @@ function initMap() {
         });
       }
     });
+
+    // Cluster click → show list of transactions in that cluster
+    markerLayers[layerName].on('clusterclick', function(e) {
+      const markers = e.layer.getAllChildMarkers();
+      const txns = markers.map(m => m._txnData).filter(Boolean);
+      if (txns.length > 0) {
+        showClusterList(txns, layerName);
+      }
+    });
+
     map.addLayer(markerLayers[layerName]);
   }
 }
@@ -118,7 +122,6 @@ async function loadData() {
   document.getElementById('cacheIndicator').style.display = 'none';
 
   try {
-    // Load all data (no date filter server-side — we filter by year client-side)
     const resp = await fetch(`/api/salesmap-data?days=0&repId=${repId}`);
     const data = await resp.json();
     allTransactions = data.transactions || [];
@@ -130,10 +133,35 @@ async function loadData() {
       document.getElementById('cacheAge').textContent = 'Error: ' + data.error;
     }
 
+    buildYearButtons();
     updateMap();
   } catch (e) {
     document.getElementById('loadingIndicator').style.display = 'none';
     console.error('Failed to load sales map data:', e);
+  }
+}
+
+// ── Dynamic Year Buttons ──
+function buildYearButtons() {
+  const years = new Set();
+  for (const txn of allTransactions) {
+    const y = getTransactionYear(txn);
+    if (y) years.add(y);
+  }
+  const sorted = [...years].sort((a, b) => b - a);
+  const container = document.getElementById('yearButtons');
+  container.innerHTML = '';
+  activeYears = {};
+
+  for (const y of sorted) {
+    activeYears[String(y)] = true;
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-sm btn-secondary year-toggle active';
+    btn.dataset.year = String(y);
+    btn.style.minWidth = '55px';
+    btn.textContent = y;
+    btn.addEventListener('click', () => toggleYear(btn));
+    container.appendChild(btn);
   }
 }
 
@@ -161,15 +189,10 @@ function toggleYear(btn) {
   updateMap();
 }
 
-function updateMap() {
-  // Clear all marker layers
-  for (const layerName of Object.keys(markerLayers)) {
-    markerLayers[layerName].clearLayers();
-  }
-
-  // Filter by active layers AND active years
+// ── Map Rendering ──
+function getFilteredTransactions() {
   const anyYearActive = Object.values(activeYears).some(v => v);
-  const filtered = allTransactions.filter(t => {
+  return allTransactions.filter(t => {
     if (!activeLayers[t.layer]) return false;
     if (anyYearActive) {
       const year = getTransactionYear(t);
@@ -177,11 +200,16 @@ function updateMap() {
     }
     return true;
   });
+}
 
-  // Recompute stats from filtered data
+function updateMap() {
+  for (const layerName of Object.keys(markerLayers)) {
+    markerLayers[layerName].clearLayers();
+  }
+
+  const filtered = getFilteredTransactions();
   updateStats(filtered);
 
-  // Add visible colored dot markers to per-layer cluster groups
   for (const txn of filtered) {
     const coords = getCoords(txn.city, txn.state);
     if (!coords) continue;
@@ -199,6 +227,7 @@ function updateMap() {
       fillOpacity: 0.85
     });
 
+    marker._txnData = txn; // attach for cluster click
     marker.on('click', () => showTransactionDetail(txn));
     const label = escapeHtml(txn.customerName || txn.tranId || '').substring(0, 50);
     if (label) marker.bindTooltip(label, { direction: 'top', offset: [0, -8] });
@@ -235,6 +264,94 @@ function getCoords(city, state) {
   return null;
 }
 
+// ── Cluster Click → Record List ──
+function showClusterList(txns, layerName) {
+  const color = LAYER_COLORS[layerName] || '#666';
+  const label = LAYER_LABELS[layerName] || layerName;
+  const location = txns[0] ? [txns[0].city, txns[0].state].filter(Boolean).join(', ') : '';
+
+  currentListTransactions = txns;
+  lastViewedLayer = layerName;
+
+  const sidebar = document.getElementById('sidebarContent');
+  const title = document.getElementById('sidebarTitle');
+  title.innerHTML = `<i class="bi bi-geo-alt-fill" style="color:${color}"></i> ${location || label} (${txns.length})`;
+
+  let html = '<div class="p-2" style="max-height:500px; overflow-y:auto;">';
+  for (let i = 0; i < txns.length; i++) {
+    const t = txns[i];
+    const amt = t.total > 0 ? '$' + Number(t.total).toLocaleString(undefined, { maximumFractionDigits: 0 }) : '';
+    const tColor = LAYER_COLORS[t.layer] || '#666';
+    html += `<div class="p-2 border-bottom" style="cursor:pointer;" onclick="showTransactionDetailByIndex(${i})" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <div class="fw-bold small">${escapeHtml((t.customerName || t.tranId || 'Unknown').substring(0, 40))}</div>
+          <small class="text-muted">${escapeHtml([t.city, t.state].filter(Boolean).join(', '))}</small>
+        </div>
+        <div class="text-end">
+          <span class="badge" style="background:${tColor}; color:white; font-size:0.65rem;">${LAYER_LABELS[t.layer] || t.layer}</span>
+          ${amt ? `<div class="small fw-bold text-success mt-1">${amt}</div>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }
+  html += '</div>';
+  sidebar.innerHTML = html;
+}
+
+// ── Stat Tile Click → Full Transaction List ──
+function showTransactionList(layer) {
+  const filtered = getFilteredTransactions();
+  const txns = layer === 'all' ? filtered : filtered.filter(t => t.layer === layer);
+
+  if (txns.length === 0) return;
+
+  const color = LAYER_COLORS[layer] || '#475569';
+  const label = layer === 'all' ? 'All Transactions' : (LAYER_LABELS[layer] || layer);
+
+  // Sort by date descending
+  txns.sort((a, b) => {
+    const da = a.date ? new Date(a.date) : new Date(0);
+    const db = b.date ? new Date(b.date) : new Date(0);
+    return db - da;
+  });
+
+  currentListTransactions = txns;
+  lastViewedLayer = layer;
+
+  const sidebar = document.getElementById('sidebarContent');
+  const title = document.getElementById('sidebarTitle');
+  title.innerHTML = `<i class="bi bi-list-ul" style="color:${color}"></i> ${label} (${txns.length})`;
+
+  let html = '<div class="p-2" style="max-height:500px; overflow-y:auto;">';
+  for (let i = 0; i < txns.length; i++) {
+    const t = txns[i];
+    const amt = t.total > 0 ? '$' + Number(t.total).toLocaleString(undefined, { maximumFractionDigits: 0 }) : '';
+    const tColor = LAYER_COLORS[t.layer] || '#666';
+    html += `<div class="p-2 border-bottom" style="cursor:pointer;" onclick="showTransactionDetailByIndex(${i})" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background=''">
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
+          <div class="fw-bold small">${escapeHtml((t.customerName || t.tranId || 'Unknown').substring(0, 40))}</div>
+          <small class="text-muted">${escapeHtml([t.city, t.state].filter(Boolean).join(', '))}</small>
+          ${t.date ? `<br><small class="text-muted">${escapeHtml(t.date)}</small>` : ''}
+        </div>
+        <div class="text-end">
+          <span class="badge" style="background:${tColor}; color:white; font-size:0.65rem;">${LAYER_LABELS[t.layer] || t.layer}</span>
+          ${amt ? `<div class="small fw-bold text-success mt-1">${amt}</div>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }
+  html += '</div>';
+  sidebar.innerHTML = html;
+}
+
+function showTransactionDetailByIndex(index) {
+  const txn = currentListTransactions[index];
+  if (txn) showTransactionDetail(txn);
+}
+
+// ── Transaction Detail ──
 function showTransactionDetail(txn) {
   const sidebar = document.getElementById('sidebarContent');
   const title = document.getElementById('sidebarTitle');
@@ -246,18 +363,20 @@ function showTransactionDetail(txn) {
 
   let html = '<div class="p-3">';
 
-  // Customer name
+  // Back to list button
+  if (lastViewedLayer !== null) {
+    html += `<button class="btn btn-sm btn-outline-secondary mb-2" onclick="backToList()"><i class="bi bi-arrow-left"></i> Back to list</button>`;
+  }
+
   if (txn.customerName) {
     html += `<h5 class="mb-1">${escapeHtml(txn.customerName)}</h5>`;
   }
 
-  // Layer badge + transaction number
   html += `<span class="badge" style="background:${color}; color:white;">${layerLabel}</span>`;
   if (txn.tranId) {
     html += ` <span class="badge bg-secondary">${escapeHtml(txn.tranId)}</span>`;
   }
 
-  // Key details grid
   html += '<div class="mt-3">';
 
   if (txn.total > 0) {
@@ -281,7 +400,6 @@ function showTransactionDetail(txn) {
     </div>`;
   }
 
-  // Ship-to address
   const addrParts = [txn.street, txn.city, txn.state, txn.zip].filter(Boolean);
   if (addrParts.length) {
     html += `<div class="d-flex justify-content-between border-bottom py-1">
@@ -290,7 +408,6 @@ function showTransactionDetail(txn) {
     </div>`;
   }
 
-  // HQ location
   if (txn.hqCity || txn.hqState) {
     html += `<div class="d-flex justify-content-between border-bottom py-1">
       <small class="text-muted">HQ</small>
@@ -314,74 +431,22 @@ function showTransactionDetail(txn) {
 
   html += '</div>';
 
-  // Quote-specific pipeline section
+  // Quote pipeline
   if (txn.type === 'Estimate') {
     html += '<div class="mt-3"><h6 class="text-muted small fw-bold">QUOTE PIPELINE</h6>';
-
-    if (txn.nsStatus) {
-      html += `<div class="d-flex justify-content-between border-bottom py-1">
-        <small class="text-muted">NS Status</small>
-        <small class="fw-bold">${escapeHtml(txn.nsStatus)}</small>
-      </div>`;
-    }
-    if (txn.probability != null) {
-      html += `<div class="d-flex justify-content-between border-bottom py-1">
-        <small class="text-muted">Probability</small>
-        <small>${escapeHtml(String(txn.probability))}</small>
-      </div>`;
-    }
-    if (txn.daysOpen != null) {
-      html += `<div class="d-flex justify-content-between border-bottom py-1">
-        <small class="text-muted">Days Open</small>
-        <small>${txn.daysOpen}</small>
-      </div>`;
-    }
-    if (txn.linkedSO) {
-      html += `<div class="d-flex justify-content-between border-bottom py-1">
-        <small class="text-muted">Linked SO</small>
-        <small class="text-primary">${escapeHtml(txn.linkedSO)}</small>
-      </div>`;
-    }
-    if (txn.dateConverted) {
-      html += `<div class="d-flex justify-content-between border-bottom py-1">
-        <small class="text-muted">Date Converted</small>
-        <small>${escapeHtml(txn.dateConverted)}</small>
-      </div>`;
-    }
-    if (txn.contactEmail) {
-      html += `<div class="d-flex justify-content-between border-bottom py-1">
-        <small class="text-muted">Contact</small>
-        <small><a href="mailto:${escapeHtml(txn.contactEmail)}">${escapeHtml(txn.contactEmail)}</a></small>
-      </div>`;
-    }
-    if (txn.lostReason) {
-      html += `<div class="d-flex justify-content-between border-bottom py-1">
-        <small class="text-muted">Lost Reason</small>
-        <small class="text-danger">${escapeHtml(txn.lostReason)}</small>
-      </div>`;
-    }
-    if (txn.reasonForLoss) {
-      html += `<div class="d-flex justify-content-between border-bottom py-1">
-        <small class="text-muted">Details</small>
-        <small class="text-end">${escapeHtml(txn.reasonForLoss)}</small>
-      </div>`;
-    }
-    if (txn.isBid) {
-      html += `<div class="d-flex justify-content-between border-bottom py-1">
-        <small class="text-muted">Is Bid</small>
-        <small>Yes</small>
-      </div>`;
-    }
-    if (txn.firstQuote) {
-      html += `<div class="d-flex justify-content-between border-bottom py-1">
-        <small class="text-muted">First Quote</small>
-        <small class="text-info">Yes</small>
-      </div>`;
-    }
+    if (txn.nsStatus) html += detailRow('NS Status', `<span class="fw-bold">${escapeHtml(txn.nsStatus)}</span>`);
+    if (txn.probability != null) html += detailRow('Probability', escapeHtml(String(txn.probability)));
+    if (txn.daysOpen != null) html += detailRow('Days Open', txn.daysOpen);
+    if (txn.linkedSO) html += detailRow('Linked SO', `<span class="text-primary">${escapeHtml(txn.linkedSO)}</span>`);
+    if (txn.dateConverted) html += detailRow('Date Converted', escapeHtml(txn.dateConverted));
+    if (txn.contactEmail) html += detailRow('Contact', `<a href="mailto:${escapeHtml(txn.contactEmail)}">${escapeHtml(txn.contactEmail)}</a>`);
+    if (txn.lostReason) html += detailRow('Lost Reason', `<span class="text-danger">${escapeHtml(txn.lostReason)}</span>`);
+    if (txn.reasonForLoss) html += detailRow('Details', `<span class="text-end">${escapeHtml(txn.reasonForLoss)}</span>`);
+    if (txn.isBid) html += detailRow('Is Bid', 'Yes');
+    if (txn.firstQuote) html += detailRow('First Quote', '<span class="text-info">Yes</span>');
     html += '</div>';
   }
 
-  // Sales-specific
   if (txn.type === 'SalesOrd' && txn.firstOrder) {
     html += `<div class="mt-2"><span class="badge bg-info">First Order</span></div>`;
   }
@@ -404,7 +469,6 @@ function showTransactionDetail(txn) {
     html += '</tbody></table></div>';
   }
 
-  // Memo
   if (txn.memo) {
     html += `<div class="mt-3 p-2" style="background:#f8fafc; border-radius:8px;"><small class="text-muted"><strong>Memo:</strong> ${escapeHtml(txn.memo)}</small></div>`;
   }
@@ -413,6 +477,24 @@ function showTransactionDetail(txn) {
   sidebar.innerHTML = html;
 }
 
+function detailRow(label, value) {
+  return `<div class="d-flex justify-content-between border-bottom py-1"><small class="text-muted">${label}</small><small>${value}</small></div>`;
+}
+
+function backToList() {
+  if (lastViewedLayer !== null) {
+    // Re-render the last list
+    if (currentListTransactions.length > 0 && currentListTransactions[0].city) {
+      // Was a cluster list — re-show it
+      const layerName = lastViewedLayer;
+      showClusterList(currentListTransactions, layerName);
+    } else {
+      showTransactionList(lastViewedLayer);
+    }
+  }
+}
+
+// ── Layer Toggle ──
 function toggleLayer(btn) {
   const layer = btn.dataset.stage;
   activeLayers[layer] = !activeLayers[layer];
@@ -434,6 +516,7 @@ function toggleLayer(btn) {
   updateMap();
 }
 
+// ── Stats ──
 function fmtDollars(n) {
   if (n >= 1000000) return '$' + (n / 1000000).toFixed(1) + 'M';
   if (n >= 1000) return '$' + (n / 1000).toFixed(0) + 'K';
@@ -462,7 +545,6 @@ function updateStats(filtered) {
   document.getElementById('statConvertedValue').textContent = fmtDollars(convertedValue);
   document.getElementById('statLostValue').textContent = fmtDollars(lostValue);
 
-  // Conversion rate: converted / (converted + lost)
   const totalDecided = converted.length + lost.length;
   const convRate = totalDecided > 0 ? ((converted.length / totalDecided) * 100).toFixed(1) : '--';
   document.getElementById('statConvRate').textContent = convRate + '% conv rate';

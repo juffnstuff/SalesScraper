@@ -39,10 +39,7 @@
       </select>
       <span class="mx-2 text-muted">|</span>
       <span class="fw-bold small text-muted">YEARS:</span>
-      <% const currentYear = new Date().getFullYear(); %>
-      <% for (let y = currentYear; y >= currentYear - 4; y--) { %>
-        <button class="btn btn-sm btn-secondary year-toggle active" data-year="<%= y %>" style="min-width:55px;"><%= y %></button>
-      <% } %>
+      <span id="yearButtons"></span>
     </div>
   </div>
   <div class="col-md-3 text-end">
@@ -80,7 +77,7 @@
 <!-- Summary Stats -->
 <div class="row g-3 mt-2 mb-3">
   <div class="col">
-    <div class="card text-center">
+    <div class="card text-center stat-tile" style="cursor:pointer;" onclick="showTransactionList('shipped')">
       <div class="card-body py-2">
         <div class="stat-value text-success" id="statRevenue">$0</div>
         <div class="stat-label">Sales Revenue</div>
@@ -89,7 +86,7 @@
     </div>
   </div>
   <div class="col">
-    <div class="card text-center">
+    <div class="card text-center stat-tile" style="cursor:pointer;" onclick="showTransactionList('open')">
       <div class="card-body py-2">
         <div class="stat-value layer-open" id="statOpenValue">$0</div>
         <div class="stat-label">Open Quotes</div>
@@ -98,7 +95,7 @@
     </div>
   </div>
   <div class="col">
-    <div class="card text-center">
+    <div class="card text-center stat-tile" style="cursor:pointer;" onclick="showTransactionList('converted')">
       <div class="card-body py-2">
         <div class="stat-value layer-converted" id="statConvertedValue">$0</div>
         <div class="stat-label">Converted</div>
@@ -107,7 +104,7 @@
     </div>
   </div>
   <div class="col">
-    <div class="card text-center">
+    <div class="card text-center stat-tile" style="cursor:pointer;" onclick="showTransactionList('lost')">
       <div class="card-body py-2">
         <div class="stat-value layer-lost" id="statLostValue">$0</div>
         <div class="stat-label">Lost</div>
@@ -116,7 +113,7 @@
     </div>
   </div>
   <div class="col">
-    <div class="card text-center">
+    <div class="card text-center stat-tile" style="cursor:pointer;" onclick="showTransactionList('all')">
       <div class="card-body py-2">
         <div class="stat-value" id="statTotal">0</div>
         <div class="stat-label">Total Transactions</div>

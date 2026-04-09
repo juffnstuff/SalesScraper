@@ -591,7 +591,7 @@ app.get('/api/heatmap-data', ensureAuth, (req, res) => {
       const cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
       for (const p of (cache.projects || [])) {
         if (cutoff && p.scannedAt && new Date(p.scannedAt) < cutoff) continue;
-        const key = ((p.projectName || '') + (p.state || '')).toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 60);
+        const key = ((p.projectName || '') + (p.state || '')).toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 120);
         if (seen.has(key)) continue;
         seen.add(key);
         projects.push({
@@ -627,7 +627,7 @@ app.get('/api/heatmap-data', ensureAuth, (req, res) => {
           for (const r of (data.searchResults?.results || [])) {
             const state = r.geography?.state;
             if (!state) continue;
-            const key = ((r.projectName || '') + state).toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 60);
+            const key = ((r.projectName || '') + state).toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 120);
             if (seen.has(key)) continue;
             seen.add(key);
             projects.push({
@@ -678,13 +678,13 @@ function mergeIntoNewsCache(results) {
   const ConstructionNewsExpanded = require('../prospecting/sources/construction_news_expanded');
   const seen = new Set();
   for (const p of cache.projects) {
-    seen.add(((p.projectName || '') + (p.state || '')).toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 60));
+    seen.add(((p.projectName || '') + (p.state || '')).toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 120));
   }
 
   let newCount = 0;
   for (const r of results) {
     const state = r.geography?.state || r.state || '';
-    const key = ((r.projectName || '') + state).toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 60);
+    const key = ((r.projectName || '') + state).toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 120);
     if (seen.has(key)) continue;
     seen.add(key);
     newCount++;
@@ -708,7 +708,8 @@ function mergeIntoNewsCache(results) {
 
   cache.lastScan = new Date().toISOString();
   cache.totalProjects = cache.projects.length;
-  fs.writeFileSync(cachePath, JSON.stringify(cache));
+  fs.writeFileSync(cachePath, JSON.stringify(cache, null, 2));
+  console.log(`[News Cache] Merged: ${newCount} new, ${cache.projects.length} total`);
   return { total: cache.projects.length, newCount };
 }
 
