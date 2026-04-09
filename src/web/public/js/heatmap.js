@@ -439,36 +439,68 @@ function toggleStage(btn) {
   }
 }
 
-// ── Quick Scan (existing national) ──
+// ── Quick Scan (national — one query at a time to avoid timeout) ──
 async function scanForNews() {
   const btn = document.getElementById('scanBtn');
   btn.classList.add('scanning');
   btn.disabled = true;
+  document.getElementById('regionalScanBtn').disabled = true;
+
+  const regions = ['Northeast','Southeast','Midwest-East','Midwest-West','South-Central','Mountain','Pacific','Mid-Atlantic'];
+  const verticals = ['parking', 'municipal', 'industrial', 'construction'];
+  let totalNew = 0;
+  let totalFound = 0;
+  let errors = 0;
+
+  // Run 2 random regions × 4 verticals = 8 quick queries
+  const shuffled = regions.sort(() => Math.random() - 0.5).slice(0, 2);
 
   try {
-    const resp = await fetch('/api/heatmap-scan', { method: 'POST' });
-    const data = await resp.json();
+    let step = 0;
+    const total = shuffled.length * verticals.length;
+    for (const region of shuffled) {
+      for (const vertical of verticals) {
+        step++;
+        btn.querySelector('.scan-text').textContent = `Scanning ${region}/${vertical} (${step}/${total})...`;
 
-    btn.classList.remove('scanning');
-    btn.disabled = false;
+        try {
+          const resp = await fetch('/api/heatmap-scan-single', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ region, vertical })
+          });
+          const data = await resp.json();
 
-    if (data.success && data.projects) {
-      mergeProjects(data.projects);
-      const msg = data.projects.length === 0
-        ? 'Scan returned 0 results. Check Railway deploy logs for errors (API key missing?).'
-        : `Quick scan complete! Found ${data.projects.length} projects (${data.newProjects || 0} new, ${data.totalCached || '?'} total cached).`;
-      alert(msg);
-    } else {
-      alert('Scan failed: ' + (data.error || 'Unknown error. Check Railway deploy logs.'));
+          if (data.success && data.projects) {
+            mergeProjects(data.projects);
+            totalNew += data.newProjects || 0;
+            totalFound += data.projects.length;
+          } else {
+            errors++;
+            console.warn(`[Quick Scan] ${region}/${vertical}:`, data.error);
+          }
+        } catch (e) {
+          errors++;
+          console.warn(`[Quick Scan] ${region}/${vertical} fetch error:`, e.message);
+        }
+      }
     }
+
+    btn.querySelector('.scan-text').innerHTML = '<i class="bi bi-search"></i> Quick Scan';
+    const msg = errors === total
+      ? `Scan failed — all ${total} queries errored. Check Railway deploy logs for API errors.`
+      : `Quick scan done! ${totalFound} found, ${totalNew} new. ${errors > 0 ? errors + ' errors.' : ''}`;
+    alert(msg);
   } catch (e) {
+    alert('Scan failed: ' + e.message);
+  } finally {
     btn.classList.remove('scanning');
     btn.disabled = false;
-    alert('Scan failed: ' + e.message);
+    document.getElementById('regionalScanBtn').disabled = false;
   }
 }
 
-// ── Deep Scan (regional, state-by-state) ──
+// ── Deep Scan (regional — one query at a time to avoid timeout) ──
 async function scanRegional() {
   const btn = document.getElementById('regionalScanBtn');
   btn.classList.add('regional-scanning');
@@ -476,31 +508,46 @@ async function scanRegional() {
   document.getElementById('scanBtn').disabled = true;
 
   const regions = ['Northeast','Southeast','Midwest-East','Midwest-West','South-Central','Mountain','Pacific','Mid-Atlantic'];
+  const verticals = ['parking', 'municipal', 'industrial', 'construction'];
   let totalNew = 0;
+  let totalFound = 0;
+  let errors = 0;
 
   try {
-    for (let i = 0; i < regions.length; i++) {
-      document.getElementById('regionalProgress').textContent = `${regions[i]} (${i + 1}/${regions.length})`;
+    let step = 0;
+    const total = regions.length * verticals.length;
+    for (const region of regions) {
+      for (const vertical of verticals) {
+        step++;
+        document.getElementById('regionalProgress').textContent = `${region} / ${vertical} (${step}/${total})`;
 
-      const resp = await fetch('/api/heatmap-scan-regional', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ regions: [regions[i]] })
-      });
-      const data = await resp.json();
+        try {
+          const resp = await fetch('/api/heatmap-scan-single', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ region, vertical })
+          });
+          const data = await resp.json();
 
-      if (data.success && data.projects) {
-        mergeProjects(data.projects);
-        totalNew += data.newProjects || 0;
-        console.log(`[Deep Scan] ${regions[i]}: ${data.projects.length} found, ${data.newProjects || 0} new`);
-      } else {
-        console.warn(`[Deep Scan] ${regions[i]} failed:`, data.error);
+          if (data.success && data.projects) {
+            mergeProjects(data.projects);
+            totalNew += data.newProjects || 0;
+            totalFound += data.projects.length;
+            console.log(`[Deep Scan] ${region}/${vertical}: ${data.projects.length} found, ${data.newProjects || 0} new`);
+          } else {
+            errors++;
+            console.warn(`[Deep Scan] ${region}/${vertical}:`, data.error);
+          }
+        } catch (e) {
+          errors++;
+          console.warn(`[Deep Scan] ${region}/${vertical} fetch error:`, e.message);
+        }
       }
     }
 
-    const msg = totalNew > 0
-      ? `Regional scan complete! ${totalNew} new projects found across ${regions.length} regions.`
-      : `Regional scan complete but found 0 new projects. Check Railway deploy logs — the Anthropic API key may not be set.`;
+    const msg = errors === total
+      ? `Deep scan failed — all ${total} queries errored. Check Railway deploy logs for API errors.`
+      : `Deep scan done! ${totalFound} found, ${totalNew} new across ${regions.length} regions. ${errors > 0 ? errors + ' errors.' : ''}`;
     alert(msg);
   } catch (e) {
     alert('Regional scan failed: ' + e.message);

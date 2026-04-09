@@ -771,6 +771,40 @@ app.post('/api/heatmap-scan', ensureAuth, async (req, res) => {
   }
 });
 
+// ── API: Single regional query (one region + one vertical, fast) ──
+app.post('/api/heatmap-scan-single', ensureAuth, async (req, res) => {
+  const { region, vertical } = req.body || {};
+  if (!region || !vertical) return res.status(400).json({ error: 'region and vertical required' });
+
+  try {
+    const ConstructionNewsExpanded = require('../prospecting/sources/construction_news_expanded');
+    const searcher = new ConstructionNewsExpanded();
+    const results = await searcher.searchSingleRegion(region, vertical);
+    const { total, newCount } = mergeIntoNewsCache(results);
+
+    const projects = results.map(r => ({
+      projectName: r.projectName || 'Unknown',
+      projectType: r.projectType || '',
+      city: r.geography?.city || '',
+      state: r.geography?.state || '',
+      estimatedValue: r.estimatedValue || 0,
+      bidDate: r.bidDate || '',
+      owner: r.owner || '',
+      generalContractor: r.generalContractor || '',
+      sourceUrl: r.sourceUrl || '',
+      source: r.source || '',
+      relevanceScore: r.relevanceScore || 0,
+      lifecycleStage: r.lifecycleStage || ConstructionNewsExpanded.classifyLifecycleStage(r),
+      notes: (r.notes || '').substring(0, 200)
+    }));
+
+    res.json({ success: true, projects, count: projects.length, totalCached: total, newProjects: newCount });
+  } catch (error) {
+    console.error(`[Single Scan] ${region}/${vertical} error:`, error.message);
+    res.json({ success: false, error: error.message, projects: [] });
+  }
+});
+
 // ── API: Regional Deep Scan (state-by-state via region batching) ──
 app.post('/api/heatmap-scan-regional', ensureAuth, async (req, res) => {
   try {

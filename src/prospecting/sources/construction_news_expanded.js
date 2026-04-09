@@ -358,6 +358,27 @@ If nothing relevant found, return []. Return ONLY the JSON array.`
     return queries[vertical] || `construction project ${year} in ${stateList}`;
   }
 
+  /**
+   * Run a single regional query (one region + one vertical).
+   * Returns raw results (not deduped against cache).
+   */
+  async searchSingleRegion(regionName, vertical) {
+    const states = ConstructionNewsExpanded.REGIONS[regionName];
+    if (!states) return [];
+    const stateList = states.join(', ');
+    const query = this._buildRegionalQuery(vertical, stateList);
+
+    try {
+      console.log(`    [News+Regional] ${regionName} / ${vertical}`);
+      const found = await this._runNewsSearch(query, vertical, {}, vertical);
+      console.log(`    [News+Regional] ${regionName}/${vertical} → ${found.length} results`);
+      return found;
+    } catch (error) {
+      console.warn(`    [News+Regional] ${regionName}/${vertical} failed: ${error.message}`);
+      return [];
+    }
+  }
+
   async searchByRegion(options = {}) {
     const regionNames = options.regions || Object.keys(ConstructionNewsExpanded.REGIONS);
     const verticals = options.verticals || ['parking', 'municipal', 'industrial', 'construction'];
