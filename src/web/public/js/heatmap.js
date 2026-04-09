@@ -454,9 +454,12 @@ async function scanForNews() {
 
     if (data.success && data.projects) {
       mergeProjects(data.projects);
-      alert(`Quick scan complete! Found ${data.projects.length} projects (${data.newProjects || 0} new).`);
+      const msg = data.projects.length === 0
+        ? 'Scan returned 0 results. Check Railway deploy logs for errors (API key missing?).'
+        : `Quick scan complete! Found ${data.projects.length} projects (${data.newProjects || 0} new, ${data.totalCached || '?'} total cached).`;
+      alert(msg);
     } else {
-      alert('Scan completed but found no results. Try again later.');
+      alert('Scan failed: ' + (data.error || 'Unknown error. Check Railway deploy logs.'));
     }
   } catch (e) {
     btn.classList.remove('scanning');
@@ -489,10 +492,16 @@ async function scanRegional() {
       if (data.success && data.projects) {
         mergeProjects(data.projects);
         totalNew += data.newProjects || 0;
+        console.log(`[Deep Scan] ${regions[i]}: ${data.projects.length} found, ${data.newProjects || 0} new`);
+      } else {
+        console.warn(`[Deep Scan] ${regions[i]} failed:`, data.error);
       }
     }
 
-    alert(`Regional scan complete! ${totalNew} new projects found across ${regions.length} regions.`);
+    const msg = totalNew > 0
+      ? `Regional scan complete! ${totalNew} new projects found across ${regions.length} regions.`
+      : `Regional scan complete but found 0 new projects. Check Railway deploy logs — the Anthropic API key may not be set.`;
+    alert(msg);
   } catch (e) {
     alert('Regional scan failed: ' + e.message);
   } finally {

@@ -733,8 +733,11 @@ app.post('/api/heatmap-scan', ensureAuth, async (req, res) => {
       ]
     };
 
+    console.log('[Heatmap Scan] Starting quick scan...');
     const results = await searcher.search(scanIcp);
+    console.log(`[Heatmap Scan] Search returned ${results.length} raw results`);
     const { total, newCount } = mergeIntoNewsCache(results);
+    console.log(`[Heatmap Scan] After merge: ${newCount} new, ${total} total`);
 
     // Also save to run log for backward compatibility
     const Reporter = require('../ui/reporter');

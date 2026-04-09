@@ -190,19 +190,23 @@ class ConstructionNewsExpanded {
    */
   async _searchCategory(category, queries, icp, defaultStage) {
     const results = [];
+    let errors = 0;
 
     for (const query of queries) {
       try {
         console.log(`    [News+] ${query}`);
         const found = await this._runNewsSearch(query, category, icp, defaultStage);
+        console.log(`    [News+] → ${found.length} projects found`);
         results.push(...found);
       } catch (error) {
+        errors++;
         console.warn(`    [News+] Failed: ${error.message}`);
       }
       // Rate limit
       await new Promise(r => setTimeout(r, 800));
     }
 
+    console.log(`    [News+] ${category}: ${results.length} results, ${errors} errors from ${queries.length} queries`);
     return results;
   }
 
@@ -273,7 +277,7 @@ If nothing relevant found, return []. Return ONLY the JSON array.`
 
       try {
         const parsed = JSON.parse(text);
-        return (Array.isArray(parsed) ? parsed : []).map(r => {
+        const results = (Array.isArray(parsed) ? parsed : []).map(r => {
           const result = {
             projectName: r.projectName || 'Unknown Project',
             projectType: r.projectType || category,
@@ -293,14 +297,16 @@ If nothing relevant found, return []. Return ONLY the JSON array.`
             matchedIcpFields: ['construction_news_expanded', category],
             notes: r.notes || `Found via expanded news: "${query}"`
           };
-          // Classify lifecycle stage
           result.lifecycleStage = ConstructionNewsExpanded.classifyLifecycleStage(result) || defaultStage;
           return result;
         });
+        return results;
       } catch (e) {
+        console.warn(`    [News+] JSON parse failed: ${text.substring(0, 100)}...`);
         return [];
       }
     } catch (error) {
+      console.error(`    [News+] API error: ${error.message}`);
       return [];
     }
   }
