@@ -435,7 +435,8 @@ app.get('/salesmap', ensureAuth, (req, res) => {
 
 // ── API: Sales Map Data (reads cached NetSuite data from data/netsuite_cache/) ──
 app.get('/api/salesmap-data', ensureAuth, (req, res) => {
-  const days = parseInt(req.query.days) || 730;
+  const daysParam = req.query.days;
+  const days = daysParam != null && daysParam !== '' ? parseInt(daysParam) : 730;
   const repId = req.query.repId || '';
   const reps = loadReps();
 
