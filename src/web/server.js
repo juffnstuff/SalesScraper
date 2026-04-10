@@ -581,91 +581,34 @@ app.get('/api/heatmap-data', ensureAuth, async (req, res) => {
   const days = parseInt(req.query.days) || 0;
   const cutoff = days > 0 ? new Date(Date.now() - days * 86400000) : null;
 
-  const projects = [];
-  const seen = new Set();
-
-  // Primary source: persistent news cache
   try {
-    const cachePath = path.join(__dirname, '../../data/news_cache.json');
-    if (fs.existsSync(cachePath)) {
-      const cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
-      for (const p of (cache.projects || [])) {
-        if (cutoff && p.scannedAt && new Date(p.scannedAt) < cutoff) continue;
-        const key = ((p.projectName || '') + (p.state || '')).toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 120);
-        if (seen.has(key)) continue;
-        seen.add(key);
-        projects.push({
-          projectName: p.projectName || 'Unknown',
-          projectType: p.projectType || '',
-          city: p.city || '',
-          state: p.state || '',
-          estimatedValue: p.estimatedValue || 0,
-          bidDate: p.bidDate || '',
-          owner: p.owner || '',
-          generalContractor: p.generalContractor || '',
-          sourceUrl: p.sourceUrl || '',
-          source: p.source || '',
-          relevanceScore: p.relevanceScore || 0,
-          lifecycleStage: p.lifecycleStage || ConstructionNewsExpanded.classifyLifecycleStage(p),
-          projectStatus: ConstructionNewsExpanded.classifyProjectStatus(p),
-          notes: (p.notes || '').substring(0, 200),
-          contractors: p.contractors || [],
-          contractorSearched: p.contractorSearched || false
-        });
-      }
+    let projects = await dataLayer.getProjects(cutoff);
+
+    // Add projectStatus if not already set
+    projects = projects.map(p => ({
+      ...p,
+      projectStatus: p.projectStatus || ConstructionNewsExpanded.classifyProjectStatus(p),
+      lifecycleStage: p.lifecycleStage || ConstructionNewsExpanded.classifyLifecycleStage(p)
+    }));
+
+    const summary = {
+      total: projects.length,
+      parking: projects.filter(p => p.lifecycleStage === 'parking').length,
+      industrial: projects.filter(p => p.lifecycleStage === 'industrial').length,
+      municipal: projects.filter(p => p.lifecycleStage === 'municipal').length,
+      construction: projects.filter(p => p.lifecycleStage === 'construction').length
+    };
+
+    const byState = {};
+    for (const p of projects) {
+      byState[p.state] = (byState[p.state] || 0) + 1;
     }
-  } catch (e) { console.error('Error reading news cache:', e.message); }
 
-  // Secondary source: run logs (for backward compatibility)
-  try {
-    const logsDir = path.join(__dirname, '../../logs/runs');
-    if (fs.existsSync(logsDir)) {
-      const files = fs.readdirSync(logsDir).filter(f => f.endsWith('.json'));
-      for (const file of files) {
-        try {
-          const data = JSON.parse(fs.readFileSync(path.join(logsDir, file), 'utf8'));
-          if (cutoff && new Date(data.runDate) < cutoff) continue;
-          for (const r of (data.searchResults?.results || [])) {
-            const state = r.geography?.state;
-            if (!state) continue;
-            const key = ((r.projectName || '') + state).toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 120);
-            if (seen.has(key)) continue;
-            seen.add(key);
-            projects.push({
-              projectName: r.projectName || 'Unknown',
-              projectType: r.projectType || '',
-              city: r.geography?.city || '',
-              state: state,
-              estimatedValue: r.estimatedValue || 0,
-              bidDate: r.bidDate || '',
-              owner: r.owner || '',
-              generalContractor: r.generalContractor || '',
-              sourceUrl: r.sourceUrl || '',
-              source: r.source || '',
-              relevanceScore: r.relevanceScore || 0,
-              lifecycleStage: r.lifecycleStage || ConstructionNewsExpanded.classifyLifecycleStage(r),
-              notes: (r.notes || '').substring(0, 200)
-            });
-          }
-        } catch (e) { /* skip bad files */ }
-      }
-    }
-  } catch (e) { /* skip */ }
-
-  const summary = {
-    total: projects.length,
-    parking: projects.filter(p => p.lifecycleStage === 'parking').length,
-    industrial: projects.filter(p => p.lifecycleStage === 'industrial').length,
-    municipal: projects.filter(p => p.lifecycleStage === 'municipal').length,
-    construction: projects.filter(p => p.lifecycleStage === 'construction').length
-  };
-
-  const byState = {};
-  for (const p of projects) {
-    byState[p.state] = (byState[p.state] || 0) + 1;
+    res.json({ projects, summary, byState });
+  } catch (e) {
+    console.error('Error loading heatmap data:', e.message);
+    res.json({ projects: [], summary: { total: 0 }, byState: {} });
   }
-
-  res.json({ projects, summary, byState });
 });
 
 // ── API: Export projects to Excel ──
@@ -674,11 +617,10 @@ app.get('/api/heatmap-export/excel', ensureAuth, async (req, res) => {
   const ConstructionNewsExpanded = require('../prospecting/sources/construction_news_expanded');
   const vertical = req.query.vertical || 'all';
 
-  const cachePath = path.join(__dirname, '../../data/news_cache.json');
   let projects = [];
   try {
-    const cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
-    projects = (cache.projects || []).map(p => ({
+    const raw = await dataLayer.getProjects();
+    projects = raw.map(p => ({
       projectName: p.projectName || 'Unknown',
       projectType: p.projectType || '',
       city: p.city || '',
@@ -689,7 +631,7 @@ app.get('/api/heatmap-export/excel', ensureAuth, async (req, res) => {
       generalContractor: p.generalContractor || '',
       sourceUrl: p.sourceUrl || '',
       lifecycleStage: p.lifecycleStage || ConstructionNewsExpanded.classifyLifecycleStage(p),
-      projectStatus: ConstructionNewsExpanded.classifyProjectStatus(p),
+      projectStatus: p.projectStatus || ConstructionNewsExpanded.classifyProjectStatus(p),
       notes: (p.notes || '').substring(0, 300),
       contractors: (p.contractors || []).map(c => c.name).join(', ')
     }));
@@ -744,15 +686,14 @@ app.get('/api/heatmap-export/excel', ensureAuth, async (req, res) => {
 });
 
 // ── API: Export projects to printable PDF page ──
-app.get('/api/heatmap-export/pdf', ensureAuth, (req, res) => {
+app.get('/api/heatmap-export/pdf', ensureAuth, async (req, res) => {
   const ConstructionNewsExpanded = require('../prospecting/sources/construction_news_expanded');
   const vertical = req.query.vertical || 'all';
 
-  const cachePath = path.join(__dirname, '../../data/news_cache.json');
   let projects = [];
   try {
-    const cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
-    projects = (cache.projects || []).map(p => ({
+    const raw = await dataLayer.getProjects();
+    projects = raw.map(p => ({
       projectName: p.projectName || 'Unknown',
       city: p.city || '',
       state: p.state || '',
@@ -761,12 +702,12 @@ app.get('/api/heatmap-export/pdf', ensureAuth, (req, res) => {
       generalContractor: p.generalContractor || '',
       bidDate: p.bidDate || '',
       lifecycleStage: p.lifecycleStage || ConstructionNewsExpanded.classifyLifecycleStage(p),
-      projectStatus: ConstructionNewsExpanded.classifyProjectStatus(p),
+      projectStatus: p.projectStatus || ConstructionNewsExpanded.classifyProjectStatus(p),
       notes: (p.notes || '').substring(0, 150),
       sourceUrl: p.sourceUrl || ''
     }));
   } catch (e) {
-    return res.status(500).send('Could not read cache');
+    return res.status(500).send('Could not load projects');
   }
 
   if (vertical !== 'all') {
