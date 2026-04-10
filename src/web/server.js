@@ -433,7 +433,7 @@ app.get('/salesmap', ensureAuth, (req, res) => {
 });
 
 // ── API: Sales Map Data (reads cached NetSuite data from data/netsuite_cache/) ──
-app.get('/api/salesmap-data', ensureAuth, (req, res) => {
+app.get('/api/salesmap-data', ensureAuth, async (req, res) => {
   const daysParam = req.query.days;
   const days = daysParam != null && daysParam !== '' ? parseInt(daysParam) : 730;
   const repId = req.query.repId || '';
@@ -445,102 +445,92 @@ app.get('/api/salesmap-data', ensureAuth, (req, res) => {
     repLookup[r.netsuiteId] = r.name;
   }
 
-  // Resolve repId string to NetSuite employee ID
-  let netsuiteRepId = null;
-  if (repId) {
-    const rep = reps.find(r => r.id === repId);
-    if (rep) netsuiteRepId = rep.netsuiteId;
-  }
-
   // Date cutoff
   const cutoff = days > 0 ? new Date(Date.now() - days * 86400000) : null;
 
-  const cacheDir = path.join(__dirname, '../../data/netsuite_cache');
-  const transactions = [];
+  // Try database first
+  let transactions = await dataLayer.getTransactions(repId, reps);
 
-  // Read sales cache (supports both SuiteQL and enriched saved-search format)
-  try {
-    const salesPath = path.join(cacheDir, 'sales.json');
-    if (fs.existsSync(salesPath)) {
-      const salesData = JSON.parse(fs.readFileSync(salesPath, 'utf8'));
-      for (const row of (salesData.transactions || [])) {
-        const repId_ = row.salesRep || row.employee;
-        if (netsuiteRepId && repId_ !== netsuiteRepId) continue;
-        const dateStr = row.date || row.trandate;
-        if (cutoff && new Date(dateStr) < cutoff) continue;
-        transactions.push({
-          id: row.id,
-          tranId: row.orderId || row.tranid,
-          type: 'SalesOrd',
-          layer: 'shipped',
-          date: dateStr,
-          total: parseFloat(row.total) || 0,
-          customerName: row.customerName || row.customer || row.customername,
-          memo: row.memo || '',
-          city: row.city || row.shipcity || '',
-          state: row.state || row.shipstate || '',
-          zip: row.zip || row.shipzip || '',
-          street: row.street || '',
-          repName: repLookup[repId_] || '',
-          vertical: row.vertical || '',
-          hqCity: row.hqCity || '',
-          hqState: row.hqState || '',
-          firstOrder: row.firstOrder || false,
-          leadSource: row.leadSource || '',
-          items: row.items || []
-        });
-      }
-    }
-  } catch (e) { console.error('Error reading sales cache:', e.message); }
+  if (transactions === null) {
+    // JSON fallback — database not available
+    transactions = [];
 
-  // Read estimates cache (supports both SuiteQL and enriched saved-search format)
-  try {
-    const estPath = path.join(cacheDir, 'estimates.json');
-    if (fs.existsSync(estPath)) {
-      const estData = JSON.parse(fs.readFileSync(estPath, 'utf8'));
-      for (const row of (estData.transactions || [])) {
-        const repId_ = row.salesRep || row.employee;
-        if (netsuiteRepId && repId_ !== netsuiteRepId) continue;
-        const dateStr = row.date || row.trandate;
-        if (cutoff && new Date(dateStr) < cutoff) continue;
-        const nsStatus = row.nsStatus || '';
-        const lostReason = row.lostReason || row.lostreason || '';
-        const statusDisplay = row.status || row.statusdisplay || nsStatus || '';
-        const layer = classifyEstimateStatus(statusDisplay, lostReason);
-        transactions.push({
-          id: row.id,
-          tranId: row.quoteId || row.tranid,
-          type: 'Estimate',
-          layer,
-          date: dateStr,
-          total: parseFloat(row.total) || 0,
-          customerName: row.customerName || row.customer || row.customername,
-          memo: row.memo || '',
-          city: row.city || row.shipcity || '',
-          state: row.state || row.shipstate || '',
-          zip: row.zip || row.shipzip || '',
-          street: row.street || '',
-          repName: repLookup[repId_] || '',
-          probability: row.probability || null,
-          status: statusDisplay,
-          nsStatus,
-          lostReason,
-          reasonForLoss: row.reasonForLoss || '',
-          daysOpen: row.daysOpen != null ? row.daysOpen : null,
-          linkedSO: row.linkedSO || '',
-          dateConverted: row.dateConverted || '',
-          contactEmail: row.contactEmail || '',
-          isBid: row.isBid || false,
-          firstQuote: row.firstQuote || false,
-          vertical: row.vertical || '',
-          hqCity: row.hqCity || '',
-          hqState: row.hqState || '',
-          leadSource: row.leadSource || '',
-          items: row.items || []
-        });
-      }
+    // Resolve repId string to NetSuite employee ID
+    let netsuiteRepId = null;
+    if (repId) {
+      const rep = reps.find(r => r.id === repId);
+      if (rep) netsuiteRepId = rep.netsuiteId;
     }
-  } catch (e) { console.error('Error reading estimates cache:', e.message); }
+
+    const cacheDir = path.join(__dirname, '../../data/netsuite_cache');
+
+    // Read sales cache
+    try {
+      const salesPath = path.join(cacheDir, 'sales.json');
+      if (fs.existsSync(salesPath)) {
+        const salesData = JSON.parse(fs.readFileSync(salesPath, 'utf8'));
+        for (const row of (salesData.transactions || [])) {
+          const repId_ = row.salesRep || row.employee;
+          if (netsuiteRepId && repId_ !== netsuiteRepId) continue;
+          const dateStr = row.date || row.trandate;
+          if (cutoff && new Date(dateStr) < cutoff) continue;
+          transactions.push({
+            id: row.id, tranId: row.orderId || row.tranid, type: 'SalesOrd', layer: 'shipped',
+            date: dateStr, total: parseFloat(row.total) || 0,
+            customerName: row.customerName || row.customer || row.customername,
+            memo: row.memo || '', city: row.city || row.shipcity || '',
+            state: row.state || row.shipstate || '', zip: row.zip || row.shipzip || '',
+            street: row.street || '', repName: repLookup[repId_] || '',
+            vertical: row.vertical || '', hqCity: row.hqCity || '', hqState: row.hqState || '',
+            firstOrder: row.firstOrder || false, leadSource: row.leadSource || '',
+            items: row.items || []
+          });
+        }
+      }
+    } catch (e) { console.error('Error reading sales cache:', e.message); }
+
+    // Read estimates cache
+    try {
+      const estPath = path.join(cacheDir, 'estimates.json');
+      if (fs.existsSync(estPath)) {
+        const estData = JSON.parse(fs.readFileSync(estPath, 'utf8'));
+        for (const row of (estData.transactions || [])) {
+          const repId_ = row.salesRep || row.employee;
+          if (netsuiteRepId && repId_ !== netsuiteRepId) continue;
+          const dateStr = row.date || row.trandate;
+          if (cutoff && new Date(dateStr) < cutoff) continue;
+          const nsStatus = row.nsStatus || '';
+          const lostReason = row.lostReason || row.lostreason || '';
+          const statusDisplay = row.status || row.statusdisplay || nsStatus || '';
+          const layer = classifyEstimateStatus(statusDisplay, lostReason);
+          transactions.push({
+            id: row.id, tranId: row.quoteId || row.tranid, type: 'Estimate', layer,
+            date: dateStr, total: parseFloat(row.total) || 0,
+            customerName: row.customerName || row.customer || row.customername,
+            memo: row.memo || '', city: row.city || row.shipcity || '',
+            state: row.state || row.shipstate || '', zip: row.zip || row.shipzip || '',
+            street: row.street || '', repName: repLookup[repId_] || '',
+            probability: row.probability || null, status: statusDisplay, nsStatus, lostReason,
+            reasonForLoss: row.reasonForLoss || '',
+            daysOpen: row.daysOpen != null ? row.daysOpen : null,
+            linkedSO: row.linkedSO || '', dateConverted: row.dateConverted || '',
+            contactEmail: row.contactEmail || '', isBid: row.isBid || false,
+            firstQuote: row.firstQuote || false, vertical: row.vertical || '',
+            hqCity: row.hqCity || '', hqState: row.hqState || '',
+            leadSource: row.leadSource || '', items: row.items || []
+          });
+        }
+      }
+    } catch (e) { console.error('Error reading estimates cache:', e.message); }
+  }
+
+  // Apply date cutoff for DB results too
+  if (cutoff && transactions.length > 0 && transactions[0].date) {
+    transactions = transactions.filter(t => {
+      if (!t.date) return true;
+      return new Date(t.date) >= cutoff;
+    });
+  }
 
   const summary = {
     total: transactions.length,
@@ -553,15 +543,6 @@ app.get('/api/salesmap-data', ensureAuth, (req, res) => {
     totalConvertedValue: transactions.filter(t => t.layer === 'converted').reduce((s, t) => s + t.total, 0),
     totalLostValue: transactions.filter(t => t.layer === 'lost').reduce((s, t) => s + t.total, 0)
   };
-
-  // Read sync timestamp
-  try {
-    const salesPath = path.join(cacheDir, 'sales.json');
-    if (fs.existsSync(salesPath)) {
-      const d = JSON.parse(fs.readFileSync(salesPath, 'utf8'));
-      summary.syncedAt = d.syncedAt;
-    }
-  } catch (e) { /* skip */ }
 
   res.json({ transactions, summary });
 });
