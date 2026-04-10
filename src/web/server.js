@@ -13,6 +13,7 @@ const bcrypt = require('bcryptjs');
 const { OIDCStrategy } = require('passport-azure-ad');
 const path = require('path');
 const fs = require('fs');
+const dataLayer = require('./data');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -48,28 +49,27 @@ function saveUsers(users) {
   fs.writeFileSync(USERS_PATH, JSON.stringify(users, null, 2));
 }
 
+// Async versions — used by endpoints, falls back to JSON if no DB
+async function loadUsersAsync() {
+  try { return await dataLayer.getUsers(); }
+  catch { return loadUsers(); }
+}
+
 // Passport serialization (shared by both strategies)
 passport.serializeUser((user, done) => done(null, user.username || user.id));
-passport.deserializeUser((identifier, done) => {
-  const users = loadUsers();
-  const user = users.find(u => u.username === identifier);
-  if (user) {
-    return done(null, {
-      username: user.username,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      repId: user.repId,
-      mustChangePassword: user.mustChangePassword
-    });
+passport.deserializeUser(async (identifier, done) => {
+  try {
+    const users = await loadUsersAsync();
+    const user = users.find(u => u.username === identifier);
+    done(null, user || false);
+  } catch (e) {
+    done(null, false);
   }
-  // Fallback for MS365 sessions (identifier is Azure OID)
-  done(null, { id: identifier, name: 'MS365 User', role: 'admin' });
 });
 
 // ── Local username/password strategy ──
 passport.use(new LocalStrategy(async (username, password, done) => {
-  const users = loadUsers();
+  const users = await loadUsersAsync();
   const user = users.find(u => u.username === username.toLowerCase());
   if (!user) return done(null, false, { message: 'Invalid username or password' });
 
@@ -239,7 +239,7 @@ app.post('/change-password', async (req, res) => {
     return res.redirect('/change-password?error=' + encodeURIComponent('Password must be at least 6 characters'));
   }
 
-  const users = loadUsers();
+  const users = await loadUsersAsync();
   const user = users.find(u => u.username === req.user.username);
   if (!user) return res.redirect('/login');
 
@@ -251,9 +251,8 @@ app.post('/change-password', async (req, res) => {
     }
   }
 
-  user.passwordHash = await bcrypt.hash(newPassword, 10);
-  user.mustChangePassword = false;
-  saveUsers(users);
+  const newHash = await bcrypt.hash(newPassword, 10);
+  await dataLayer.updateUser(req.user.username, { passwordHash: newHash, mustChangePassword: false });
 
   // Update session
   req.user.mustChangePassword = false;
@@ -577,7 +576,7 @@ app.get('/heatmap', ensureAuth, (req, res) => {
 });
 
 // ── API: Heat Map Data (reads from persistent news cache + run logs) ──
-app.get('/api/heatmap-data', ensureAuth, (req, res) => {
+app.get('/api/heatmap-data', ensureAuth, async (req, res) => {
   const ConstructionNewsExpanded = require('../prospecting/sources/construction_news_expanded');
   const days = parseInt(req.query.days) || 0;
   const cutoff = days > 0 ? new Date(Date.now() - days * 86400000) : null;
@@ -820,50 +819,9 @@ app.get('/api/heatmap-export/pdf', ensureAuth, (req, res) => {
   res.send(html);
 });
 
-// ── News cache helper ──
-function mergeIntoNewsCache(results) {
-  const cachePath = path.join(__dirname, '../../data/news_cache.json');
-  let cache = { projects: [], lastScan: null, totalProjects: 0 };
-  try {
-    if (fs.existsSync(cachePath)) cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
-  } catch (e) { /* fresh cache */ }
-
-  const ConstructionNewsExpanded = require('../prospecting/sources/construction_news_expanded');
-  const seen = new Set();
-  for (const p of cache.projects) {
-    seen.add(((p.projectName || '') + (p.state || '')).toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 120));
-  }
-
-  let newCount = 0;
-  for (const r of results) {
-    const state = r.geography?.state || r.state || '';
-    const key = ((r.projectName || '') + state).toLowerCase().replace(/[^a-z0-9]/g, '').substring(0, 120);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    newCount++;
-    cache.projects.push({
-      projectName: r.projectName || 'Unknown',
-      projectType: r.projectType || '',
-      city: r.geography?.city || r.city || '',
-      state,
-      estimatedValue: r.estimatedValue || 0,
-      bidDate: r.bidDate || '',
-      owner: r.owner || '',
-      generalContractor: r.generalContractor || '',
-      sourceUrl: r.sourceUrl || '',
-      source: r.source || 'construction_news_expanded',
-      relevanceScore: r.relevanceScore || 0,
-      lifecycleStage: r.lifecycleStage || ConstructionNewsExpanded.classifyLifecycleStage(r),
-      notes: (r.notes || '').substring(0, 300),
-      scannedAt: new Date().toISOString()
-    });
-  }
-
-  cache.lastScan = new Date().toISOString();
-  cache.totalProjects = cache.projects.length;
-  fs.writeFileSync(cachePath, JSON.stringify(cache, null, 2));
-  console.log(`[News Cache] Merged: ${newCount} new, ${cache.projects.length} total`);
-  return { total: cache.projects.length, newCount };
+// ── News cache helper (uses PostgreSQL via data layer, falls back to JSON) ──
+async function mergeIntoNewsCache(results) {
+  return dataLayer.mergeProjects(results);
 }
 
 // ── API: Heat Map Scan (live news search → saves to persistent cache) ──
@@ -1001,28 +959,10 @@ app.post('/api/heatmap-contractor-search', ensureAuth, async (req, res) => {
 
   console.log(`[Contractor Search] Starting: "${projectName}" (${state})`);
 
-  const cachePath = path.join(__dirname, '../../data/news_cache.json');
-  let cache;
-  try {
-    cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
-  } catch (e) {
-    console.error('[Contractor Search] Cache read error:', e.message);
-    return res.status(500).json({ error: 'Could not read cache' });
-  }
-
-  let project = cache.projects.find(p => p.projectName === projectName && p.state === state);
-  if (!project) {
-    // Case-insensitive fallback
-    const nameLower = projectName.toLowerCase().trim();
-    const stateLower = (state || '').toLowerCase().trim();
-    project = cache.projects.find(p =>
-      (p.projectName || '').toLowerCase().trim() === nameLower &&
-      (p.state || '').toLowerCase().trim() === stateLower
-    );
-  }
+  const project = await dataLayer.findProject(projectName, state);
   if (!project) {
     console.warn(`[Contractor Search] Project not found: "${projectName}" / ${state}`);
-    return res.status(404).json({ error: `Project "${projectName}" (${state}) not found in cache` });
+    return res.status(404).json({ error: `Project "${projectName}" (${state}) not found` });
   }
 
   try {
@@ -1030,10 +970,7 @@ app.post('/api/heatmap-contractor-search', ensureAuth, async (req, res) => {
     const searcher = new ConstructionNewsExpanded();
     const contractors = await searcher.searchContractor(project);
 
-    // Save back to cache
-    project.contractors = contractors;
-    project.contractorSearched = true;
-    fs.writeFileSync(cachePath, JSON.stringify(cache, null, 2));
+    await dataLayer.saveContractors(projectName, state, contractors);
 
     console.log(`[Contractor Search] Done: "${projectName}" → ${contractors.length} companies found`);
     res.json({ success: true, contractors });
@@ -1137,10 +1074,21 @@ app.get('/icp/:repId', ensureAuth, (req, res) => {
 });
 
 // ── Start server ──
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`\n  🔧 RubberForm Prospecting Engine`);
   console.log(`  📊 Dashboard: http://localhost:${PORT}`);
-  console.log(`  🔐 Auth: Local${MS365_ENABLED ? ' + MS365 (Azure AD)' : ''}\n`);
+  console.log(`  🔐 Auth: Local${MS365_ENABLED ? ' + MS365 (Azure AD)' : ''}`);
+
+  // Check database connection
+  const db = require('./db');
+  if (await db.isReady()) {
+    console.log('  💾 Database: PostgreSQL connected\n');
+  } else if (process.env.DATABASE_URL) {
+    console.log('  💾 Database: PostgreSQL configured but tables not found — run: node scripts/migrate.js');
+    console.log('  💾 Falling back to JSON files\n');
+  } else {
+    console.log('  💾 Database: JSON files (no DATABASE_URL set)\n');
+  }
 
   // Run background news scan if cache is stale
   runStartupScan().catch(e => console.error('Startup scan error:', e.message));
