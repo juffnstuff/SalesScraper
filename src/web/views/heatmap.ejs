@@ -51,7 +51,27 @@
         <span class="regional-spinner"><span class="spinner-border spinner-border-sm"></span> <span id="regionalProgress">Scanning...</span></span>
       </button>
     </div>
-    <small class="text-muted ms-2">Deep Scan searches state-by-state for 3-5x more projects</small>
+    <div class="btn-group ms-2">
+      <button class="btn btn-sm btn-outline-success dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+        <i class="bi bi-download"></i> Export
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><h6 class="dropdown-header">Excel</h6></li>
+        <li><a class="dropdown-item" href="#" onclick="exportExcel('all'); return false;">All Projects</a></li>
+        <li><a class="dropdown-item" href="#" onclick="exportExcel('parking'); return false;">Parking</a></li>
+        <li><a class="dropdown-item" href="#" onclick="exportExcel('industrial'); return false;">Industrial</a></li>
+        <li><a class="dropdown-item" href="#" onclick="exportExcel('municipal'); return false;">Municipal</a></li>
+        <li><a class="dropdown-item" href="#" onclick="exportExcel('construction'); return false;">Construction</a></li>
+        <li><hr class="dropdown-divider"></li>
+        <li><h6 class="dropdown-header">PDF (Print)</h6></li>
+        <li><a class="dropdown-item" href="#" onclick="exportPDF('all'); return false;">All Projects</a></li>
+        <li><a class="dropdown-item" href="#" onclick="exportPDF('parking'); return false;">Parking</a></li>
+        <li><a class="dropdown-item" href="#" onclick="exportPDF('industrial'); return false;">Industrial</a></li>
+        <li><a class="dropdown-item" href="#" onclick="exportPDF('municipal'); return false;">Municipal</a></li>
+        <li><a class="dropdown-item" href="#" onclick="exportPDF('construction'); return false;">Construction</a></li>
+      </ul>
+    </div>
+    <small class="text-muted ms-2 d-none d-lg-inline">Deep Scan searches state-by-state for 3-5x more projects</small>
   </div>
 </div>
 

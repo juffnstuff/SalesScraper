@@ -272,6 +272,13 @@ function showProjectDetail(project) {
   html += `<h6 class="mb-1">${escapeHtml(project.projectName)}</h6>`;
   html += `<span class="badge" style="background:${color}; color:white; font-size:0.7rem;">${STAGE_LABELS[stage] || stage}</span>`;
 
+  // Project status badge
+  if (project.projectStatus && project.projectStatus !== 'Unknown') {
+    const statusColors = { Active: '#16a34a', Awarded: '#2563eb', Bidding: '#ea580c', Planned: '#6b7280', Completed: '#8b5cf6' };
+    const sc = statusColors[project.projectStatus] || '#94a3b8';
+    html += ` <span class="badge" style="background:${sc}; color:white; font-size:0.7rem;">${escapeHtml(project.projectStatus)}</span>`;
+  }
+
   // Location
   const location = [project.city, project.state].filter(Boolean).join(', ');
   if (location) {
@@ -588,6 +595,14 @@ function updateStats(summary) {
   document.getElementById('statIndustrial').textContent = summary.industrial || 0;
   document.getElementById('statMunicipal').textContent = summary.municipal || 0;
   document.getElementById('statConstruction').textContent = summary.construction || 0;
+}
+
+// ── Export ──
+function exportExcel(vertical) {
+  window.location.href = `/api/heatmap-export/excel?vertical=${vertical}`;
+}
+function exportPDF(vertical) {
+  window.open(`/api/heatmap-export/pdf?vertical=${vertical}`, '_blank');
 }
 
 function escapeHtml(str) {

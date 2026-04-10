@@ -608,6 +608,7 @@ app.get('/api/heatmap-data', ensureAuth, (req, res) => {
           source: p.source || '',
           relevanceScore: p.relevanceScore || 0,
           lifecycleStage: p.lifecycleStage || ConstructionNewsExpanded.classifyLifecycleStage(p),
+          projectStatus: ConstructionNewsExpanded.classifyProjectStatus(p),
           notes: (p.notes || '').substring(0, 200),
           contractors: p.contractors || [],
           contractorSearched: p.contractorSearched || false
@@ -666,6 +667,157 @@ app.get('/api/heatmap-data', ensureAuth, (req, res) => {
   }
 
   res.json({ projects, summary, byState });
+});
+
+// ── API: Export projects to Excel ──
+app.get('/api/heatmap-export/excel', ensureAuth, async (req, res) => {
+  const ExcelJS = require('exceljs');
+  const ConstructionNewsExpanded = require('../prospecting/sources/construction_news_expanded');
+  const vertical = req.query.vertical || 'all';
+
+  const cachePath = path.join(__dirname, '../../data/news_cache.json');
+  let projects = [];
+  try {
+    const cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+    projects = (cache.projects || []).map(p => ({
+      projectName: p.projectName || 'Unknown',
+      projectType: p.projectType || '',
+      city: p.city || '',
+      state: p.state || '',
+      estimatedValue: p.estimatedValue || 0,
+      bidDate: p.bidDate || '',
+      owner: p.owner || '',
+      generalContractor: p.generalContractor || '',
+      sourceUrl: p.sourceUrl || '',
+      lifecycleStage: p.lifecycleStage || ConstructionNewsExpanded.classifyLifecycleStage(p),
+      projectStatus: ConstructionNewsExpanded.classifyProjectStatus(p),
+      notes: (p.notes || '').substring(0, 300),
+      contractors: (p.contractors || []).map(c => c.name).join(', ')
+    }));
+  } catch (e) {
+    return res.status(500).json({ error: 'Could not read cache' });
+  }
+
+  if (vertical !== 'all') {
+    projects = projects.filter(p => p.lifecycleStage === vertical);
+  }
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'RubberForm Prospecting Engine';
+  const ws = wb.addWorksheet('Projects');
+
+  ws.columns = [
+    { header: 'Project Name', key: 'projectName', width: 40 },
+    { header: 'Status', key: 'projectStatus', width: 14 },
+    { header: 'City', key: 'city', width: 18 },
+    { header: 'State', key: 'state', width: 8 },
+    { header: 'Est. Value', key: 'estimatedValue', width: 16 },
+    { header: 'Owner / Developer', key: 'owner', width: 30 },
+    { header: 'General Contractor', key: 'generalContractor', width: 25 },
+    { header: 'Timeline', key: 'bidDate', width: 25 },
+    { header: 'Vertical', key: 'lifecycleStage', width: 14 },
+    { header: 'Type', key: 'projectType', width: 22 },
+    { header: 'Companies Found', key: 'contractors', width: 35 },
+    { header: 'Notes', key: 'notes', width: 50 },
+    { header: 'Source URL', key: 'sourceUrl', width: 40 }
+  ];
+
+  // Header style
+  ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1e293b' } };
+
+  for (const p of projects) {
+    const row = ws.addRow(p);
+    if (p.estimatedValue > 0) {
+      row.getCell('estimatedValue').numFmt = '$#,##0';
+    }
+  }
+
+  // Auto-filter
+  ws.autoFilter = { from: 'A1', to: `M${projects.length + 1}` };
+
+  const label = vertical === 'all' ? 'all-verticals' : vertical;
+  const date = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="rubberform-projects-${label}-${date}.xlsx"`);
+  await wb.xlsx.write(res);
+  res.end();
+});
+
+// ── API: Export projects to printable PDF page ──
+app.get('/api/heatmap-export/pdf', ensureAuth, (req, res) => {
+  const ConstructionNewsExpanded = require('../prospecting/sources/construction_news_expanded');
+  const vertical = req.query.vertical || 'all';
+
+  const cachePath = path.join(__dirname, '../../data/news_cache.json');
+  let projects = [];
+  try {
+    const cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+    projects = (cache.projects || []).map(p => ({
+      projectName: p.projectName || 'Unknown',
+      city: p.city || '',
+      state: p.state || '',
+      estimatedValue: p.estimatedValue || 0,
+      owner: p.owner || '',
+      generalContractor: p.generalContractor || '',
+      bidDate: p.bidDate || '',
+      lifecycleStage: p.lifecycleStage || ConstructionNewsExpanded.classifyLifecycleStage(p),
+      projectStatus: ConstructionNewsExpanded.classifyProjectStatus(p),
+      notes: (p.notes || '').substring(0, 150),
+      sourceUrl: p.sourceUrl || ''
+    }));
+  } catch (e) {
+    return res.status(500).send('Could not read cache');
+  }
+
+  if (vertical !== 'all') {
+    projects = projects.filter(p => p.lifecycleStage === vertical);
+  }
+
+  const label = vertical === 'all' ? 'All Verticals' : vertical.charAt(0).toUpperCase() + vertical.slice(1);
+  const date = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  const statusColors = { Active: '#16a34a', Awarded: '#2563eb', Bidding: '#ea580c', Planned: '#6b7280', Completed: '#8b5cf6', Unknown: '#94a3b8' };
+
+  const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const fmtVal = v => v > 0 ? '$' + Number(v).toLocaleString('en-US') : '—';
+
+  let rows = '';
+  for (const p of projects) {
+    const sc = statusColors[p.projectStatus] || '#94a3b8';
+    rows += `<tr>
+      <td><strong>${esc(p.projectName)}</strong></td>
+      <td>${esc(p.city)}, ${esc(p.state)}</td>
+      <td>${fmtVal(p.estimatedValue)}</td>
+      <td>${esc(p.owner)}</td>
+      <td>${esc(p.generalContractor) || '—'}</td>
+      <td><span style="color:${sc}; font-weight:bold;">${esc(p.projectStatus)}</span></td>
+      <td>${esc(p.bidDate) || '—'}</td>
+    </tr>`;
+  }
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>RubberForm Projects — ${esc(label)}</title>
+<style>
+  body { font-family: -apple-system, Arial, sans-serif; margin: 20px; color: #1e293b; font-size: 11px; }
+  h1 { font-size: 18px; margin-bottom: 2px; }
+  .subtitle { color: #64748b; margin-bottom: 12px; font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th { background: #1e293b; color: white; padding: 6px 8px; text-align: left; font-size: 10px; }
+  td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+  tr:nth-child(even) { background: #f8fafc; }
+  @media print { body { margin: 10px; } }
+</style></head><body>
+<h1>RubberForm Recycled Products — Construction Project Pipeline</h1>
+<div class="subtitle">${esc(label)} &bull; ${esc(date)} &bull; ${projects.length} projects</div>
+<table>
+  <thead><tr><th>Project</th><th>Location</th><th>Est. Value</th><th>Owner</th><th>GC</th><th>Status</th><th>Timeline</th></tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+<script>window.print();</script>
+</body></html>`;
+
+  res.setHeader('Content-Type', 'text/html');
+  res.send(html);
 });
 
 // ── News cache helper ──

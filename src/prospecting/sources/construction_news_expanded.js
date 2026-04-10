@@ -84,6 +84,34 @@ class ConstructionNewsExpanded {
   }
 
   /**
+   * Classify project status/phase from timeline and notes text.
+   */
+  static classifyProjectStatus(result) {
+    const text = [
+      result.bidDate || '',
+      result.notes || '',
+      result.projectName || '',
+      result.projectType || ''
+    ].join(' ').toLowerCase();
+
+    // Most specific first
+    const patterns = [
+      { status: 'Completed', keywords: ['completed', 'opened', 'ribbon cutting', 'finished', 'grand opening'] },
+      { status: 'Active', keywords: ['under construction', 'started', 'breaking ground', 'broke ground', 'underway', 'in progress', 'construction began', 'construction start', 'groundbreaking'] },
+      { status: 'Awarded', keywords: ['awarded', 'contract awarded', 'selected', 'approved contractor', 'won the bid', 'bid winner'] },
+      { status: 'Bidding', keywords: ['bid', 'rfp', 'rfq', 'proposals due', 'solicitation', 'seeking bids', 'invitation to bid', 'bid deadline'] },
+      { status: 'Planned', keywords: ['planned', 'proposed', 'slated', 'expected', 'approved for', 'announced', 'upcoming', 'future'] }
+    ];
+
+    for (const { status, keywords } of patterns) {
+      for (const kw of keywords) {
+        if (text.includes(kw)) return status;
+      }
+    }
+    return 'Unknown';
+  }
+
+  /**
    * Search all expanded categories for construction news
    */
   async search(icp) {
