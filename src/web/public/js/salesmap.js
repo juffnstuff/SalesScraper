@@ -165,12 +165,11 @@ function buildYearButtons() {
     menu.appendChild(li);
   }
 
-  // Wire up checkbox changes
+  // Wire up checkbox changes — only update label, NOT the map
   menu.querySelectorAll('.year-checkbox').forEach(cb => {
     cb.addEventListener('change', () => {
       activeYears[cb.value] = cb.checked;
       updateYearDropdownLabel();
-      updateMap();
     });
   });
 
@@ -184,6 +183,22 @@ function buildYearButtons() {
       activeYears[cb.value] = newState;
     });
     updateYearDropdownLabel();
+  });
+
+  // Apply button at the bottom — this is where the map actually updates
+  const applyDivider = document.createElement('li');
+  applyDivider.innerHTML = '<hr class="dropdown-divider my-1">';
+  menu.appendChild(applyDivider);
+  const applyLi = document.createElement('li');
+  applyLi.innerHTML = `<div class="px-3 py-1">
+    <button class="btn btn-sm btn-primary w-100" id="yearApplyBtn">Apply</button>
+  </div>`;
+  menu.appendChild(applyLi);
+
+  document.getElementById('yearApplyBtn').addEventListener('click', () => {
+    // Close the dropdown
+    const dropdown = bootstrap.Dropdown.getOrCreateInstance(document.getElementById('yearDropdownBtn'));
+    dropdown.hide();
     updateMap();
   });
 
