@@ -7,7 +7,8 @@
     "hubspotOwnerId": 1923694575,
     "title": "Industrial Safety Product Specialist",
     "territory": "National",
-    "segment": "Industrial Safety / Reseller"
+    "segment": "Industrial Safety / Reseller",
+    "verticals": ["industrial"]
   },
   {
     "id": "andrew_gibson",
@@ -17,7 +18,8 @@
     "hubspotOwnerId": 101148281,
     "title": "Senior Account Manager",
     "territory": "National",
-    "segment": "Construction / Retail / Reseller"
+    "segment": "Construction / Retail / Reseller",
+    "verticals": ["construction"]
   },
   {
     "id": "nick_zielinski",
@@ -27,7 +29,8 @@
     "hubspotOwnerId": 539558502,
     "title": "Public Sector Sales Manager",
     "territory": "National",
-    "segment": "Municipal / Public Sector / Traffic Safety"
+    "segment": "Municipal / Public Sector / Traffic Safety",
+    "verticals": ["municipal"]
   },
   {
     "id": "brad_backman",
@@ -37,7 +40,8 @@
     "hubspotOwnerId": 78347095,
     "title": "Parking Lot Safety Product Specialist",
     "territory": "National",
-    "segment": "Parking Safety / Reseller / E-Commerce"
+    "segment": "Parking Safety / Reseller / E-Commerce",
+    "verticals": ["parking"]
   },
   {
     "id": "bill_robbins",
@@ -48,7 +52,8 @@
     "hubspotAssignTo": "jake_robbins",
     "title": "President",
     "territory": "National",
-    "segment": "Industrial / Utility / Key Accounts"
+    "segment": "Industrial / Utility / Key Accounts",
+    "verticals": []
   },
   {
     "id": "jake_robbins",
@@ -58,7 +63,8 @@
     "hubspotOwnerId": 101144621,
     "title": "VP of Sales",
     "territory": "National",
-    "segment": "Key Accounts / Management"
+    "segment": "Key Accounts / Management",
+    "verticals": []
   },
   {
     "id": "rfst_house",
@@ -70,6 +76,7 @@
     "hubspotAssignRentals": "brad_backman",
     "title": "House Accounts",
     "territory": "National",
-    "segment": "National Accounts / Reseller / Equipment Rental"
+    "segment": "National Accounts / Reseller / Equipment Rental",
+    "verticals": []
   }
 ]

@@ -292,16 +292,188 @@ app.get('/', ensureAuth, (req, res) => {
   });
 });
 
-// ── Search page ──
-app.get('/search/:repId', ensureAuth, (req, res) => {
+// ── Search page (rep's projects filtered by vertical) ──
+app.get('/search/:repId', ensureAuth, async (req, res) => {
   const reps = loadReps();
   const rep = reps.find(r => r.id === req.params.repId);
   if (!rep) return res.status(404).send('Rep not found');
   const icp = loadICP(rep.id);
   res.render('search', {
     user: req.user || { name: 'Local User' },
-    rep, icp, results: null, MS365_ENABLED
+    rep, icp, reps, MS365_ENABLED
   });
+});
+
+// ── API: Projects for rep (filtered by vertical) ──
+app.get('/api/search/:repId/projects', ensureAuth, async (req, res) => {
+  const reps = loadReps();
+  const rep = reps.find(r => r.id === req.params.repId);
+  if (!rep) return res.status(404).json({ error: 'Rep not found' });
+
+  try {
+    const projects = await dataLayer.getProjectsForRep(req.params.repId, reps);
+    res.json({ success: true, projects, total: projects.length });
+  } catch (e) {
+    console.error('[API] Project load failed:', e.message);
+    res.json({ success: false, error: e.message, projects: [] });
+  }
+});
+
+// ── API: Find decision-maker contacts via Selling.com ──
+app.post('/api/contacts/find', ensureAuth, async (req, res) => {
+  const { projectId } = req.body;
+  if (!projectId) return res.status(400).json({ error: 'projectId required' });
+
+  try {
+    const SellingApiClient = require('../enrichment/selling_api');
+    const selling = new SellingApiClient();
+
+    // Load project and its contractors
+    const db = require('./db');
+    const { rows: projRows } = await db.query('SELECT * FROM projects WHERE id = $1', [projectId]);
+    if (projRows.length === 0) return res.status(404).json({ error: 'Project not found' });
+    const project = projRows[0];
+
+    const contractors = await dataLayer.getContractorsForProject(projectId);
+    if (contractors.length === 0) {
+      return res.json({ success: true, contacts: [], message: 'No contractors found — run contractor discovery first' });
+    }
+
+    // Default buyer titles for Selling.com search
+    const targetTitles = [
+      'Project Manager', 'Procurement Manager', 'Purchasing Manager',
+      'Operations Manager', 'VP Operations', 'VP Construction',
+      'Director of Procurement', 'Director of Operations',
+      'Safety Manager', 'Facilities Manager', 'Site Manager',
+      'General Manager', 'Owner', 'President'
+    ];
+
+    const allContacts = [];
+    for (const contractor of contractors) {
+      console.log(`[Selling.com] Searching: ${contractor.name} (${project.state})`);
+      const found = await selling.findContacts(contractor.name, project.state, targetTitles);
+      console.log(`[Selling.com] → ${found.length} contacts for ${contractor.name}`);
+
+      if (found.length > 0) {
+        const saved = await dataLayer.saveContacts(projectId, contractor.id, found);
+        allContacts.push(...saved.map(r => ({
+          id: r.id,
+          firstName: r.first_name,
+          lastName: r.last_name,
+          email: r.email,
+          phone: r.phone,
+          title: r.title,
+          company: r.company,
+          linkedin: r.linkedin,
+          confidence: parseFloat(r.confidence) || 0,
+          contractorName: contractor.name,
+          contractorRole: contractor.role
+        })));
+      }
+    }
+
+    res.json({ success: true, contacts: allContacts, contractorsSearched: contractors.length });
+  } catch (e) {
+    console.error('[API] Contact find failed:', e.message);
+    res.json({ success: false, error: e.message, contacts: [] });
+  }
+});
+
+// ── API: Get contacts for a project ──
+app.get('/api/contacts/:projectId', ensureAuth, async (req, res) => {
+  try {
+    const contacts = await dataLayer.getContactsForProject(parseInt(req.params.projectId));
+    res.json({ success: true, contacts });
+  } catch (e) {
+    res.json({ success: false, error: e.message, contacts: [] });
+  }
+});
+
+// ── API: Push contacts to HubSpot ──
+app.post('/api/contacts/push', ensureAuth, async (req, res) => {
+  const { contactIds, repId } = req.body;
+  if (!contactIds || !contactIds.length) return res.status(400).json({ error: 'contactIds required' });
+
+  const reps = loadReps();
+  const rep = repId ? reps.find(r => r.id === repId) : null;
+  if (repId && !rep) return res.status(404).json({ error: 'Rep not found' });
+
+  try {
+    const HubSpotClient = require('../crm/hubspot_client');
+    const hubspot = new HubSpotClient();
+    const db = require('./db');
+    const results = [];
+
+    for (const contactId of contactIds) {
+      // Load contact + project context
+      const { rows: contactRows } = await db.query(`
+        SELECT ct.*, p.project_name, p.project_type, p.city AS proj_city, p.state AS proj_state,
+               p.estimated_value, p.bid_date, p.owner, p.general_contractor, p.source_url, p.source,
+               p.verticals, c.name AS contractor_name, c.role AS contractor_role
+        FROM contacts ct
+        JOIN projects p ON ct.project_id = p.id
+        LEFT JOIN contractors c ON ct.contractor_id = c.id
+        WHERE ct.id = $1
+      `, [contactId]);
+
+      if (contactRows.length === 0) {
+        results.push({ contactId, action: 'failed', error: 'Contact not found' });
+        continue;
+      }
+
+      const ct = contactRows[0];
+
+      // Determine rep: explicit override > assigned rep > vertical-based
+      let effectiveRep = rep;
+      if (!effectiveRep && ct.assigned_rep) {
+        effectiveRep = reps.find(r => r.id === ct.assigned_rep);
+      }
+      if (!effectiveRep) {
+        const projectVerticals = ct.verticals || [];
+        effectiveRep = reps.find(r => r.verticals && r.verticals.some(v => projectVerticals.includes(v)));
+      }
+      if (!effectiveRep) {
+        effectiveRep = reps.find(r => r.id === 'jake_robbins') || reps[0];
+      }
+
+      const contact = {
+        firstName: ct.first_name || '',
+        lastName: ct.last_name || ct.contractor_name || 'Unknown',
+        email: ct.email || '',
+        phone: ct.phone || '',
+        title: ct.title || 'Decision Maker',
+        company: ct.company || ct.contractor_name || '',
+        state: ct.state || ct.proj_state || ''
+      };
+
+      const project = {
+        projectName: ct.project_name,
+        projectType: ct.project_type || '',
+        owner: ct.owner || '',
+        generalContractor: ct.general_contractor || '',
+        bidDate: ct.bid_date || '',
+        estimatedValue: parseFloat(ct.estimated_value) || 0,
+        relevanceScore: 0,
+        geography: { city: ct.proj_city || '', state: ct.proj_state || '' },
+        sourceUrl: ct.source_url || '',
+        source: ct.source || '',
+        scoringReasoning: `Heatmap project. Contractor: ${ct.contractor_name || ''} (${ct.contractor_role || ''}). Contact via Selling.com.`
+      };
+
+      try {
+        const result = await hubspot.pushProspect(contact, project, effectiveRep);
+        await dataLayer.markContactPushed(contactId, result.contactId || '');
+        results.push({ contactId, ...result });
+      } catch (e) {
+        results.push({ contactId, action: 'failed', error: e.message });
+      }
+    }
+
+    res.json({ success: true, results });
+  } catch (e) {
+    console.error('[API] Contact push failed:', e.message);
+    res.json({ success: false, error: e.message });
+  }
 });
 
 // ── API: Run search ──

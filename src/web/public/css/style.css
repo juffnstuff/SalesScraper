@@ -206,6 +206,15 @@ body { background-color: #f5f6fa; margin: 0; }
   border-left: 3px solid #22c55e;
 }
 
+/* ── Contact cards (Selling.com results) ── */
+.contact-card {
+  background: #eff6ff;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin-top: 6px;
+  border-left: 3px solid #3b82f6;
+}
+
 /* ── Sync button spin ── */
 .spin-animation {
   animation: spin 1s linear infinite;

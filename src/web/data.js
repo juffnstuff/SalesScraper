@@ -398,7 +398,165 @@ async function updateUser(username, updates) {
   }
 }
 
+// ── Projects for Rep (filtered by vertical overlap) ──
+
+async function getProjectsForRep(repId, reps) {
+  const rep = reps.find(r => r.id === repId);
+  if (!rep || !rep.verticals || rep.verticals.length === 0) return [];
+
+  if (await db.isReady()) {
+    // Find projects where the verticals JSONB array overlaps with the rep's verticals
+    const { rows } = await db.query(`
+      SELECT p.*,
+        (SELECT COUNT(*) FROM contractors c WHERE c.project_id = p.id) AS contractor_count,
+        (SELECT COUNT(*) FROM contacts ct WHERE ct.project_id = p.id) AS contact_count
+      FROM projects p
+      WHERE p.verticals ?| $1
+      ORDER BY p.estimated_value DESC NULLS LAST, p.scanned_at DESC
+    `, [rep.verticals]);
+
+    return rows.map(r => ({
+      _dbId: r.id,
+      projectName: r.project_name,
+      projectType: r.project_type,
+      city: r.city,
+      state: r.state,
+      estimatedValue: parseFloat(r.estimated_value) || 0,
+      bidDate: r.bid_date,
+      owner: r.owner,
+      generalContractor: r.general_contractor,
+      sourceUrl: r.source_url,
+      source: r.source,
+      relevanceScore: parseFloat(r.relevance_score) || 0,
+      lifecycleStage: r.lifecycle_stage,
+      verticals: r.verticals || [r.lifecycle_stage || 'construction'],
+      projectStatus: r.project_status,
+      notes: r.notes,
+      contractorSearched: r.contractor_searched,
+      contractorCount: parseInt(r.contractor_count) || 0,
+      contactCount: parseInt(r.contact_count) || 0
+    }));
+  }
+
+  // JSON fallback
+  try {
+    if (!fs.existsSync(CACHE_PATH)) return [];
+    const cache = JSON.parse(fs.readFileSync(CACHE_PATH, 'utf8'));
+    return (cache.projects || [])
+      .filter(p => {
+        const pVerts = p.verticals || [p.lifecycleStage || 'construction'];
+        return rep.verticals.some(v => pVerts.includes(v));
+      })
+      .map(p => ({
+        projectName: p.projectName || 'Unknown',
+        projectType: p.projectType || '',
+        city: p.city || '',
+        state: p.state || '',
+        estimatedValue: p.estimatedValue || 0,
+        bidDate: p.bidDate || '',
+        owner: p.owner || '',
+        generalContractor: p.generalContractor || '',
+        sourceUrl: p.sourceUrl || '',
+        verticals: p.verticals || [p.lifecycleStage || 'construction'],
+        projectStatus: p.projectStatus || 'Unknown',
+        notes: (p.notes || '').substring(0, 300),
+        contractorCount: (p.contractors || []).length,
+        contactCount: 0
+      }));
+  } catch { return []; }
+}
+
+// ── Contacts (Selling.com enrichment results) ──
+
+async function getContractorsForProject(projectId) {
+  if (!(await db.isReady())) return [];
+  const { rows } = await db.query(
+    'SELECT * FROM contractors WHERE project_id = $1 ORDER BY id',
+    [projectId]
+  );
+  return rows.map(r => ({
+    id: r.id,
+    name: r.name,
+    role: r.role,
+    specialty: r.specialty,
+    website: r.website,
+    phone: r.phone,
+    source: r.source
+  }));
+}
+
+async function saveContacts(projectId, contractorId, contacts) {
+  if (!(await db.isReady())) return [];
+
+  const saved = [];
+  for (const c of contacts) {
+    if (!c.email && !c.lastName) continue;
+    try {
+      const { rows } = await db.query(`
+        INSERT INTO contacts (project_id, contractor_id, first_name, last_name, email, phone, title, company, linkedin, state, confidence, source)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        ON CONFLICT DO NOTHING
+        RETURNING *
+      `, [
+        projectId, contractorId || null,
+        c.firstName || '', c.lastName || '', c.email || '', c.phone || '',
+        c.title || '', c.company || '', c.linkedIn || c.linkedin || '',
+        c.state || '', c.confidence || 0, c.source || 'selling.com'
+      ]);
+      if (rows.length > 0) saved.push(rows[0]);
+    } catch (e) {
+      console.warn(`[Contacts] Skip duplicate: ${c.email || c.lastName}`);
+    }
+  }
+  return saved;
+}
+
+async function getContactsForProject(projectId) {
+  if (!(await db.isReady())) return [];
+  const { rows } = await db.query(`
+    SELECT ct.*, c.name AS contractor_name, c.role AS contractor_role
+    FROM contacts ct
+    LEFT JOIN contractors c ON ct.contractor_id = c.id
+    WHERE ct.project_id = $1
+    ORDER BY ct.confidence DESC, ct.created_at
+  `, [projectId]);
+
+  return rows.map(r => ({
+    id: r.id,
+    firstName: r.first_name,
+    lastName: r.last_name,
+    email: r.email,
+    phone: r.phone,
+    title: r.title,
+    company: r.company,
+    linkedin: r.linkedin,
+    state: r.state,
+    confidence: parseFloat(r.confidence) || 0,
+    emailVerified: r.email_verified,
+    pushedToHubspot: r.pushed_to_hubspot,
+    hubspotContactId: r.hubspot_contact_id,
+    assignedRep: r.assigned_rep,
+    contractorName: r.contractor_name || '',
+    contractorRole: r.contractor_role || ''
+  }));
+}
+
+async function markContactPushed(contactId, hubspotContactId) {
+  if (!(await db.isReady())) return;
+  await db.query(
+    'UPDATE contacts SET pushed_to_hubspot = TRUE, hubspot_contact_id = $1, pushed_at = NOW() WHERE id = $2',
+    [hubspotContactId || '', contactId]
+  );
+}
+
+async function assignContactRep(contactId, repId) {
+  if (!(await db.isReady())) return;
+  await db.query('UPDATE contacts SET assigned_rep = $1 WHERE id = $2', [repId, contactId]);
+}
+
 module.exports = {
   getProjects, mergeProjects, findProject, saveContractors,
-  getTransactions, getUsers, saveUsers, updateUser
+  getTransactions, getUsers, saveUsers, updateUser,
+  getProjectsForRep, getContractorsForProject,
+  saveContacts, getContactsForProject, markContactPushed, assignContactRep
 };

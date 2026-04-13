@@ -68,6 +68,35 @@ CREATE TABLE IF NOT EXISTS contractors (
 
 CREATE INDEX IF NOT EXISTS idx_contractors_project ON contractors(project_id);
 
+-- Contacts (decision-makers found via Selling.com, linked to projects + contractors)
+CREATE TABLE IF NOT EXISTS contacts (
+  id SERIAL PRIMARY KEY,
+  project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
+  contractor_id INTEGER REFERENCES contractors(id) ON DELETE SET NULL,
+  first_name TEXT DEFAULT '',
+  last_name TEXT DEFAULT '',
+  email TEXT DEFAULT '',
+  phone TEXT DEFAULT '',
+  title TEXT DEFAULT '',
+  company TEXT DEFAULT '',
+  linkedin TEXT DEFAULT '',
+  state TEXT DEFAULT '',
+  confidence NUMERIC DEFAULT 0,
+  email_verified BOOLEAN,
+  email_verify_reason TEXT DEFAULT '',
+  pushed_to_hubspot BOOLEAN DEFAULT FALSE,
+  hubspot_contact_id TEXT DEFAULT '',
+  pushed_at TIMESTAMPTZ,
+  assigned_rep TEXT DEFAULT '',
+  source TEXT DEFAULT 'selling.com',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_contacts_project ON contacts(project_id);
+CREATE INDEX IF NOT EXISTS idx_contacts_contractor ON contacts(contractor_id);
+CREATE INDEX IF NOT EXISTS idx_contacts_email ON contacts(email);
+CREATE INDEX IF NOT EXISTS idx_contacts_pushed ON contacts(pushed_to_hubspot);
+
 -- Transactions (sales orders + estimates from NetSuite)
 CREATE TABLE IF NOT EXISTS transactions (
   id SERIAL PRIMARY KEY,
@@ -149,6 +178,7 @@ CREATE TABLE IF NOT EXISTS transaction_sync (
 `;
 
 const DROP_TABLES = `
+DROP TABLE IF EXISTS contacts CASCADE;
 DROP TABLE IF EXISTS contractors CASCADE;
 DROP TABLE IF EXISTS projects CASCADE;
 DROP TABLE IF EXISTS transactions CASCADE;
