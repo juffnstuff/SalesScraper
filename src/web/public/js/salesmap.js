@@ -29,6 +29,9 @@ let activeYears = {};
 let currentListTransactions = [];
 let lastViewedLayer = null;
 
+// Pre-built marker cache: markerCache[layer][year] = [marker, marker, ...]
+let markerCache = { shipped: {}, open: {}, converted: {}, lost: {} };
+
 const US_STATES_GEOJSON = '/data/us-states.json';
 
 // -- Initialize --
@@ -129,6 +132,7 @@ async function loadData() {
     document.getElementById('loadingIndicator').style.display = 'none';
 
     buildYearButtons();
+    buildMarkers();
     updateMap();
   } catch (e) {
     document.getElementById('loadingIndicator').style.display = 'none';
@@ -165,11 +169,12 @@ function buildYearButtons() {
     menu.appendChild(li);
   }
 
-  // Wire up checkbox changes — only update label, NOT the map
+  // Wire up checkbox changes — instant filter with cached markers
   menu.querySelectorAll('.year-checkbox').forEach(cb => {
     cb.addEventListener('change', () => {
       activeYears[cb.value] = cb.checked;
       updateYearDropdownLabel();
+      updateMap();
     });
   });
 
@@ -183,22 +188,6 @@ function buildYearButtons() {
       activeYears[cb.value] = newState;
     });
     updateYearDropdownLabel();
-  });
-
-  // Apply button at the bottom — this is where the map actually updates
-  const applyDivider = document.createElement('li');
-  applyDivider.innerHTML = '<hr class="dropdown-divider my-1">';
-  menu.appendChild(applyDivider);
-  const applyLi = document.createElement('li');
-  applyLi.innerHTML = `<div class="px-3 py-1">
-    <button class="btn btn-sm btn-primary w-100" id="yearApplyBtn">Apply</button>
-  </div>`;
-  menu.appendChild(applyLi);
-
-  document.getElementById('yearApplyBtn').addEventListener('click', () => {
-    // Close the dropdown
-    const dropdown = bootstrap.Dropdown.getOrCreateInstance(document.getElementById('yearDropdownBtn'));
-    dropdown.hide();
     updateMap();
   });
 
@@ -241,22 +230,27 @@ function getFilteredTransactions() {
   });
 }
 
-function updateMap() {
-  for (const layerName of Object.keys(markerLayers)) {
-    markerLayers[layerName].clearLayers();
-  }
+/**
+ * Build all markers once and cache them by layer + year.
+ * Called once after data loads — never recreates marker objects.
+ */
+function buildMarkers() {
+  markerCache = { shipped: {}, open: {}, converted: {}, lost: {} };
 
-  const filtered = getFilteredTransactions();
-  updateStats(filtered);
-
-  for (const txn of filtered) {
+  for (const txn of allTransactions) {
     const coords = getCoords(txn.city, txn.state);
     if (!coords) continue;
+
+    const layer = txn.layer;
+    if (!markerCache[layer]) continue;
+
+    const year = String(getTransactionYear(txn) || 'unknown');
+    if (!markerCache[layer][year]) markerCache[layer][year] = [];
 
     const jitter = () => (Math.random() - 0.5) * 0.02;
     const lat = coords[0] + jitter();
     const lng = coords[1] + jitter();
-    const color = LAYER_COLORS[txn.layer] || '#666';
+    const color = LAYER_COLORS[layer] || '#666';
 
     const marker = L.circleMarker([lat, lng], {
       radius: 7,
@@ -266,15 +260,41 @@ function updateMap() {
       fillOpacity: 0.85
     });
 
-    marker._txnData = txn; // attach for cluster click
+    marker._txnData = txn;
     marker.on('click', () => showTransactionDetail(txn));
     const label = escapeHtml(txn.customerName || txn.tranId || '').substring(0, 50);
     if (label) marker.bindTooltip(label, { direction: 'top', offset: [0, -8] });
 
-    if (markerLayers[txn.layer]) {
-      markerLayers[txn.layer].addLayer(marker);
+    markerCache[layer][year].push(marker);
+  }
+}
+
+/**
+ * Fast filter update — swaps pre-built markers in/out of cluster groups.
+ * No marker creation happens here, just addLayers/clearLayers.
+ */
+function updateMap() {
+  const anyYearActive = Object.values(activeYears).some(v => v);
+
+  for (const layerName of Object.keys(markerLayers)) {
+    markerLayers[layerName].clearLayers();
+
+    if (!activeLayers[layerName]) continue;
+
+    const yearBuckets = markerCache[layerName] || {};
+    const markersToAdd = [];
+
+    for (const [year, markers] of Object.entries(yearBuckets)) {
+      if (anyYearActive && year !== 'unknown' && !activeYears[year]) continue;
+      markersToAdd.push(...markers);
+    }
+
+    if (markersToAdd.length > 0) {
+      markerLayers[layerName].addLayers(markersToAdd);
     }
   }
+
+  updateStats(getFilteredTransactions());
 }
 
 function getCoords(city, state) {
