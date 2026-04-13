@@ -443,6 +443,9 @@ app.get('/salesmap', ensureAuth, (req, res) => {
 
 // ── API: NetSuite Sync (manual trigger) ──
 app.post('/api/netsuite-sync', ensureAuth, async (req, res) => {
+  if (!process.env.NETSUITE_ACCOUNT_ID) {
+    return res.json({ success: false, error: 'NetSuite credentials not configured (NETSUITE_ACCOUNT_ID missing)' });
+  }
   try {
     const result = await netsuiteSync.runSync({ force: !!req.body.force });
     res.json({

@@ -120,7 +120,6 @@ async function loadData() {
   const repId = document.getElementById('repFilter').value;
 
   document.getElementById('loadingIndicator').style.display = 'inline';
-  document.getElementById('cacheIndicator').style.display = 'none';
 
   try {
     const resp = await fetch(`/api/salesmap-data?days=0&repId=${repId}`);
@@ -128,11 +127,6 @@ async function loadData() {
     allTransactions = data.transactions || [];
 
     document.getElementById('loadingIndicator').style.display = 'none';
-
-    if (data.error) {
-      document.getElementById('cacheIndicator').style.display = 'inline';
-      document.getElementById('cacheAge').textContent = 'Error: ' + data.error;
-    }
 
     buildYearButtons();
     updateMap();
@@ -611,6 +605,16 @@ async function triggerNetSuiteSync() {
   const btn = document.getElementById('syncBtn');
   const icon = document.getElementById('syncIcon');
   const statusEl = document.getElementById('syncStatus');
+
+  // Check sync status first — if DB isn't available, don't attempt
+  try {
+    const checkResp = await fetch('/api/netsuite-sync-status');
+    const checkStatus = await checkResp.json();
+    if (!checkStatus.available) {
+      statusEl.innerHTML = '<i class="bi bi-exclamation-circle text-warning"></i> Database not available — sync requires PostgreSQL';
+      return;
+    }
+  } catch (e) { /* proceed anyway */ }
 
   btn.disabled = true;
   icon.classList.add('spin-animation');
