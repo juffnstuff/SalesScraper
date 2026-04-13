@@ -326,6 +326,42 @@ async function seedUsers() {
   return count;
 }
 
+// ── Backfill: Reclassify existing projects into multi-verticals ──
+
+async function reclassifyVerticals() {
+  const ConstructionNewsExpanded = require('../src/prospecting/sources/construction_news_expanded');
+
+  // Ensure the verticals column exists (for DBs created before this update)
+  await pool.query(`
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS verticals JSONB DEFAULT '["construction"]'
+  `);
+
+  const { rows } = await pool.query(
+    'SELECT id, project_name, project_type, notes, owner, general_contractor, lifecycle_stage FROM projects'
+  );
+
+  let updated = 0;
+  for (const row of rows) {
+    const verticals = ConstructionNewsExpanded.classifyAllVerticals({
+      projectName: row.project_name || '',
+      projectType: row.project_type || '',
+      notes: row.notes || '',
+      owner: row.owner || '',
+      generalContractor: row.general_contractor || ''
+    });
+
+    const primaryStage = verticals[0] || row.lifecycle_stage || 'construction';
+
+    await pool.query(
+      'UPDATE projects SET verticals = $1, lifecycle_stage = $2 WHERE id = $3',
+      [JSON.stringify(verticals), primaryStage, row.id]
+    );
+    updated++;
+  }
+
+  return updated;
+}
+
 // ── Main ──
 
 async function main() {
@@ -333,6 +369,7 @@ async function main() {
   const reset = args.includes('--reset');
   const tablesOnly = args.includes('--tables');
   const seedOnly = args.includes('--seed');
+  const reclassifyOnly = args.includes('--reclassify');
 
   console.log('\n  RubberForm Database Migration');
   console.log('  ────────────────────────────\n');
@@ -344,6 +381,16 @@ async function main() {
     console.error('  Failed to connect:', e.message);
     console.error('  Make sure DATABASE_URL is set.');
     process.exit(1);
+  }
+
+  // Standalone reclassify — just backfill verticals on existing projects
+  if (reclassifyOnly) {
+    console.log('  Reclassifying projects into multi-verticals...');
+    const count = await reclassifyVerticals();
+    console.log(`  → ${count} projects reclassified.\n`);
+    console.log('  Done!\n');
+    await pool.end();
+    return;
   }
 
   if (reset) {
@@ -371,6 +418,11 @@ async function main() {
     const userCount = await seedUsers();
     console.log(`  → ${userCount} users seeded.\n`);
   }
+
+  // Always reclassify verticals after seeding (backfills existing projects)
+  console.log('  Reclassifying projects into multi-verticals...');
+  const reclassified = await reclassifyVerticals();
+  console.log(`  → ${reclassified} projects reclassified.\n`);
 
   console.log('  Migration complete!\n');
   await pool.end();

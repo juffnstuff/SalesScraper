@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "node scripts/migrate.js --tables && node scripts/migrate.js --seed && node src/web/server.js",
+    "startCommand": "node scripts/migrate.js --tables && node scripts/migrate.js --seed && node scripts/migrate.js --reclassify && node src/web/server.js",
     "healthcheckPath": "/",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
