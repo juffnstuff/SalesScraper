@@ -43,12 +43,15 @@
     </div>
   </div>
   <div class="col-md-3 text-end">
-    <span class="text-muted small" id="loadingIndicator" style="display:none;">
-      <span class="spinner-border spinner-border-sm"></span> Loading from NetSuite...
-    </span>
-    <span class="text-muted small" id="cacheIndicator" style="display:none;">
-      <i class="bi bi-clock-history"></i> <span id="cacheAge"></span>
-    </span>
+    <button class="btn btn-sm btn-outline-primary" id="syncBtn" onclick="triggerNetSuiteSync()" title="Pull latest changes from NetSuite">
+      <i class="bi bi-arrow-repeat" id="syncIcon"></i> Sync NetSuite
+    </button>
+    <div class="mt-1">
+      <span class="text-muted small" id="loadingIndicator" style="display:none;">
+        <span class="spinner-border spinner-border-sm"></span> Loading...
+      </span>
+      <span class="text-muted small" id="syncStatus"></span>
+    </div>
   </div>
 </div>
 

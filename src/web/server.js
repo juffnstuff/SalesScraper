@@ -14,6 +14,7 @@ const { OIDCStrategy } = require('passport-azure-ad');
 const path = require('path');
 const fs = require('fs');
 const dataLayer = require('./data');
+const netsuiteSync = require('./netsuite_sync');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -440,7 +441,34 @@ app.get('/salesmap', ensureAuth, (req, res) => {
   });
 });
 
-// ── API: Sales Map Data (reads cached NetSuite data from data/netsuite_cache/) ──
+// ── API: NetSuite Sync (manual trigger) ──
+app.post('/api/netsuite-sync', ensureAuth, async (req, res) => {
+  try {
+    const result = await netsuiteSync.runSync({ force: !!req.body.force });
+    res.json({
+      success: true,
+      sinceDate: result.sinceDate,
+      sales: result.sales,
+      estimates: result.estimates,
+      durationMs: result.durationMs
+    });
+  } catch (e) {
+    console.error('[API] NetSuite sync failed:', e.message);
+    res.json({ success: false, error: e.message });
+  }
+});
+
+// ── API: NetSuite Sync Status ──
+app.get('/api/netsuite-sync-status', ensureAuth, async (req, res) => {
+  try {
+    const status = await netsuiteSync.getSyncStatus();
+    res.json(status);
+  } catch (e) {
+    res.json({ available: false, error: e.message });
+  }
+});
+
+// ── API: Sales Map Data (reads from PostgreSQL, falls back to JSON) ──
 app.get('/api/salesmap-data', ensureAuth, async (req, res) => {
   const daysParam = req.query.days;
   const days = daysParam != null && daysParam !== '' ? parseInt(daysParam) : 730;
@@ -1022,4 +1050,32 @@ app.listen(PORT, async () => {
 
   // Run background news scan if cache is stale
   runStartupScan().catch(e => console.error('Startup scan error:', e.message));
+
+  // Run background NetSuite incremental sync if DB is available and NetSuite is configured
+  if (await db.isReady() && process.env.NETSUITE_ACCOUNT_ID) {
+    runStartupNetSuiteSync().catch(e => console.error('NetSuite startup sync error:', e.message));
+  }
 });
+
+async function runStartupNetSuiteSync() {
+  const status = await netsuiteSync.getSyncStatus();
+
+  // Skip if synced within the last 6 hours
+  if (status.lastSync) {
+    const hoursSince = (Date.now() - new Date(status.lastSync).getTime()) / 3600000;
+    if (hoursSince < 6) {
+      console.log(`  NetSuite sync is fresh (${hoursSince.toFixed(1)}h ago). Skipping startup sync.`);
+      return;
+    }
+  }
+
+  console.log('  Starting background NetSuite sync...');
+  try {
+    const result = await netsuiteSync.runSync();
+    const totalFetched = result.sales.fetched + result.estimates.fetched;
+    const totalUpserted = result.sales.upserted + result.estimates.upserted;
+    console.log(`  NetSuite sync complete: ${totalFetched} fetched, ${totalUpserted} upserted in ${result.durationMs}ms`);
+  } catch (e) {
+    console.error('  NetSuite startup sync failed:', e.message);
+  }
+}

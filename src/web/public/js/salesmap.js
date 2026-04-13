@@ -43,6 +43,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   initMap();
   loadData();
+  loadSyncStatus();
 
   document.querySelectorAll('.stage-toggle').forEach(btn => {
     btn.addEventListener('click', () => toggleLayer(btn));
@@ -548,6 +549,81 @@ function updateStats(filtered) {
   const totalDecided = converted.length + lost.length;
   const convRate = totalDecided > 0 ? ((converted.length / totalDecided) * 100).toFixed(1) : '--';
   document.getElementById('statConvRate').textContent = convRate + '% conv rate';
+}
+
+// ── NetSuite Sync ──
+async function loadSyncStatus() {
+  try {
+    const resp = await fetch('/api/netsuite-sync-status');
+    const status = await resp.json();
+    const el = document.getElementById('syncStatus');
+
+    if (!status.available) {
+      el.innerHTML = '<i class="bi bi-database-x"></i> DB unavailable';
+      return;
+    }
+
+    if (status.lastSync) {
+      const ago = timeSince(new Date(status.lastSync));
+      const countLabel = status.totalTransactions ? ` &middot; ${Number(status.totalTransactions).toLocaleString()} records` : '';
+      const statusIcon = status.lastStatus === 'success'
+        ? '<i class="bi bi-check-circle text-success"></i>'
+        : '<i class="bi bi-exclamation-circle text-danger"></i>';
+      el.innerHTML = `${statusIcon} Synced ${ago} ago${countLabel}`;
+    } else {
+      el.innerHTML = '<i class="bi bi-info-circle"></i> Never synced — data from initial seed';
+    }
+  } catch (e) {
+    // Silently ignore
+  }
+}
+
+async function triggerNetSuiteSync() {
+  const btn = document.getElementById('syncBtn');
+  const icon = document.getElementById('syncIcon');
+  const statusEl = document.getElementById('syncStatus');
+
+  btn.disabled = true;
+  icon.classList.add('spin-animation');
+  statusEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Syncing with NetSuite...';
+
+  try {
+    const resp = await fetch('/api/netsuite-sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    const result = await resp.json();
+
+    if (result.success) {
+      const totalFetched = result.sales.fetched + result.estimates.fetched;
+      const totalUpserted = result.sales.upserted + result.estimates.upserted;
+      statusEl.innerHTML = `<i class="bi bi-check-circle text-success"></i> Synced: ${totalFetched} fetched, ${totalUpserted} updated (${(result.durationMs / 1000).toFixed(1)}s)`;
+
+      // Reload map data if anything was updated
+      if (totalUpserted > 0) {
+        loadData();
+      }
+    } else {
+      statusEl.innerHTML = `<i class="bi bi-exclamation-circle text-danger"></i> Sync failed: ${escapeHtml(result.error || 'Unknown error')}`;
+    }
+  } catch (e) {
+    statusEl.innerHTML = `<i class="bi bi-exclamation-circle text-danger"></i> Sync error: ${escapeHtml(e.message)}`;
+  }
+
+  btn.disabled = false;
+  icon.classList.remove('spin-animation');
+}
+
+function timeSince(date) {
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (seconds < 60) return seconds + 's';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return minutes + 'm';
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours + 'h';
+  const days = Math.floor(hours / 24);
+  return days + 'd';
 }
 
 function escapeHtml(str) {
