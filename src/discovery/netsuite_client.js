@@ -221,6 +221,56 @@ class NetSuiteClient {
   }
 
   /**
+   * Get sales orders modified since a given date (for incremental sync).
+   * Uses lastModifiedDate so we catch status changes, not just new records.
+   * @param {string} sinceDate - ISO date string (YYYY-MM-DD)
+   */
+  async getSalesModifiedSince(sinceDate) {
+    return this.runSuiteQLPaginated(`
+      SELECT transaction.id, transaction.tranId, transaction.tranDate,
+             transaction.total, transaction.memo, transaction.employee,
+             transaction.lastModifiedDate,
+             BUILTIN.DF(transaction.entity) AS customerName,
+             BUILTIN.DF(transaction.status) AS statusDisplay,
+             transactionShippingAddress.city AS shipCity,
+             transactionShippingAddress.state AS shipState,
+             transactionShippingAddress.zip AS shipZip,
+             transactionShippingAddress.addr1 AS shipStreet
+      FROM transaction
+        LEFT JOIN transactionShippingAddress
+          ON transaction.shippingAddress = transactionShippingAddress.nkey
+      WHERE transaction.type IN ('SalesOrd', 'Invoice')
+        AND transaction.lastModifiedDate >= TO_DATE('${sinceDate}', 'YYYY-MM-DD')
+      ORDER BY transaction.lastModifiedDate DESC
+    `, 'Incremental sync: sales modified since ' + sinceDate);
+  }
+
+  /**
+   * Get estimates modified since a given date (for incremental sync).
+   * Uses lastModifiedDate so we catch status changes (open→converted, open→lost).
+   * @param {string} sinceDate - ISO date string (YYYY-MM-DD)
+   */
+  async getEstimatesModifiedSince(sinceDate) {
+    return this.runSuiteQLPaginated(`
+      SELECT transaction.id, transaction.tranId, transaction.tranDate,
+             transaction.total, transaction.memo, transaction.employee,
+             transaction.probability, transaction.lastModifiedDate,
+             BUILTIN.DF(transaction.entity) AS customerName,
+             BUILTIN.DF(transaction.status) AS statusDisplay,
+             transactionShippingAddress.city AS shipCity,
+             transactionShippingAddress.state AS shipState,
+             transactionShippingAddress.zip AS shipZip,
+             transactionShippingAddress.addr1 AS shipStreet
+      FROM transaction
+        LEFT JOIN transactionShippingAddress
+          ON transaction.shippingAddress = transactionShippingAddress.nkey
+      WHERE transaction.type = 'Estimate'
+        AND transaction.lastModifiedDate >= TO_DATE('${sinceDate}', 'YYYY-MM-DD')
+      ORDER BY transaction.lastModifiedDate DESC
+    `, 'Incremental sync: estimates modified since ' + sinceDate);
+  }
+
+  /**
    * Classify an estimate's status display value into a map layer.
    */
   static classifyEstimateStatus(statusDisplay, lostReason) {

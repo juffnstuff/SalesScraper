@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS projects (
   source TEXT DEFAULT 'construction_news_expanded',
   relevance_score NUMERIC DEFAULT 0,
   lifecycle_stage TEXT DEFAULT 'construction',
+  verticals JSONB DEFAULT '["construction"]',
   project_status TEXT DEFAULT 'Unknown',
   notes TEXT DEFAULT '',
   scanned_at TIMESTAMPTZ DEFAULT NOW(),
@@ -132,6 +133,19 @@ CREATE TABLE IF NOT EXISTS scan_metadata (
   last_scan TIMESTAMPTZ DEFAULT NOW(),
   total_projects INTEGER DEFAULT 0
 );
+
+-- Transaction sync metadata (tracks last successful NetSuite sync)
+CREATE TABLE IF NOT EXISTS transaction_sync (
+  id SERIAL PRIMARY KEY,
+  sync_type TEXT NOT NULL,
+  last_sync_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_modified_cutoff TEXT NOT NULL DEFAULT '',
+  records_fetched INTEGER DEFAULT 0,
+  records_upserted INTEGER DEFAULT 0,
+  duration_ms INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'success',
+  error_message TEXT DEFAULT ''
+);
 `;
 
 const DROP_TABLES = `
@@ -140,6 +154,7 @@ DROP TABLE IF EXISTS projects CASCADE;
 DROP TABLE IF EXISTS transactions CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 DROP TABLE IF EXISTS scan_metadata CASCADE;
+DROP TABLE IF EXISTS transaction_sync CASCADE;
 `;
 
 // ── Seed Functions ──
@@ -151,22 +166,27 @@ async function seedProjects() {
     return 0;
   }
 
+  const ConstructionNewsExpanded = require('../src/prospecting/sources/construction_news_expanded');
+
   const cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
   const projects = cache.projects || [];
   let count = 0;
 
   for (const p of projects) {
     try {
+      const verticals = p.verticals || ConstructionNewsExpanded.classifyAllVerticals(p);
+      const primaryStage = p.lifecycleStage || verticals[0] || 'construction';
+
       const result = await pool.query(`
-        INSERT INTO projects (project_name, project_type, city, state, estimated_value, bid_date, owner, general_contractor, source_url, source, relevance_score, lifecycle_stage, notes, scanned_at, contractor_searched)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        INSERT INTO projects (project_name, project_type, city, state, estimated_value, bid_date, owner, general_contractor, source_url, source, relevance_score, lifecycle_stage, verticals, notes, scanned_at, contractor_searched)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
         ON CONFLICT (project_name, state) DO NOTHING
         RETURNING id
       `, [
         p.projectName || 'Unknown', p.projectType || '', p.city || '', p.state || '',
         p.estimatedValue || 0, p.bidDate || '', p.owner || '', p.generalContractor || '',
         p.sourceUrl || '', p.source || 'construction_news_expanded', p.relevanceScore || 0,
-        p.lifecycleStage || 'construction', (p.notes || '').substring(0, 500),
+        primaryStage, JSON.stringify(verticals), (p.notes || '').substring(0, 500),
         p.scannedAt || new Date().toISOString(), p.contractorSearched || false
       ]);
 
@@ -211,7 +231,12 @@ async function seedTransactions() {
         await pool.query(`
           INSERT INTO transactions (tran_id, tran_type, customer_id, customer_name, sales_rep, city, state, zip, street, date, ship_date, total, status, vertical, hq_city, hq_state, first_order, lead_source, class, memo, invoice_id, invoice_status, items, synced_at)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
-          ON CONFLICT (tran_id) DO NOTHING
+          ON CONFLICT (tran_id) DO UPDATE SET
+            customer_name = EXCLUDED.customer_name,
+            city = EXCLUDED.city, state = EXCLUDED.state, zip = EXCLUDED.zip, street = EXCLUDED.street,
+            total = EXCLUDED.total, status = EXCLUDED.status,
+            invoice_id = EXCLUDED.invoice_id, invoice_status = EXCLUDED.invoice_status,
+            items = EXCLUDED.items, synced_at = EXCLUDED.synced_at
         `, [
           row.orderId || row.tranid, 'SalesOrd', row.customer || '', row.customerName || '',
           String(row.salesRep || row.employee || ''), row.city || row.shipcity || '', row.state || row.shipstate || '',
@@ -241,7 +266,14 @@ async function seedTransactions() {
         await pool.query(`
           INSERT INTO transactions (tran_id, tran_type, customer_id, customer_name, sales_rep, city, state, zip, street, date, total, status, ns_status, probability, days_open, contact_email, is_bid, first_quote, linked_so, date_converted, lost_reason, reason_for_loss, vertical, hq_city, hq_state, lead_source, memo, items, synced_at)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
-          ON CONFLICT (tran_id) DO NOTHING
+          ON CONFLICT (tran_id) DO UPDATE SET
+            customer_name = EXCLUDED.customer_name,
+            city = EXCLUDED.city, state = EXCLUDED.state, zip = EXCLUDED.zip, street = EXCLUDED.street,
+            total = EXCLUDED.total, status = EXCLUDED.status, ns_status = EXCLUDED.ns_status,
+            probability = EXCLUDED.probability, days_open = EXCLUDED.days_open,
+            linked_so = EXCLUDED.linked_so, date_converted = EXCLUDED.date_converted,
+            lost_reason = EXCLUDED.lost_reason, reason_for_loss = EXCLUDED.reason_for_loss,
+            items = EXCLUDED.items, synced_at = EXCLUDED.synced_at
         `, [
           row.quoteId || row.tranid, 'Estimate', row.customer || '', row.customerName || '',
           String(row.salesRep || row.employee || ''), row.city || row.shipcity || '', row.state || row.shipstate || '',
