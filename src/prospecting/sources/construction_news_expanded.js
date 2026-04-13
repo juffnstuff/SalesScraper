@@ -12,6 +12,7 @@
 const Anthropic = require('@anthropic-ai/sdk');
 
 // RubberForm's 4 market verticals — keyword classification
+// Municipal is restricted to government-funded / public sector projects only.
 const LIFECYCLE_KEYWORDS = {
   municipal: [
     'traffic calming', 'speed cushion', 'speed table', 'vision zero', 'safe streets',
@@ -19,8 +20,12 @@ const LIFECYCLE_KEYWORDS = {
     'mini roundabout', 'school zone', 'pedestrian safety', 'crosswalk',
     'speed reduction', 'road diet', 'protected intersection', 'curb extension',
     'city council', 'neighborhood safety', 'traffic study', 'bicycle',
-    'municipal', 'traffic safety', 'speed limit', 'speed hump',
-    'traffic island', 'delineator', 'meridian'
+    'traffic safety', 'speed limit', 'speed hump',
+    'traffic island', 'delineator', 'meridian',
+    'public works', 'city of ', 'town of ', 'county of ',
+    'state dot', 'department of transportation', 'fdot', 'txdot', 'caltrans',
+    'government funded', 'federal grant', 'municipal bond', 'public safety',
+    'city project', 'township', 'borough', 'public infrastructure'
   ],
   parking: [
     'parking', 'parking garage', 'parking lot', 'parking deck', 'parking structure',
@@ -28,7 +33,16 @@ const LIFECYCLE_KEYWORDS = {
     'speed bump', 'resurfacing', 'repaving', 'striping', 'pavement marking',
     'shopping center', 'strip mall', 'retail center', 'mixed-use',
     'hotel', 'office building', 'property management', 'commercial development',
-    'airport parking', 'asphalt'
+    'airport parking', 'asphalt',
+    'sports facility', 'sports complex', 'stadium', 'arena', 'amphitheater',
+    'convention center', 'event center', 'athletic complex', 'recreation center',
+    'college campus', 'university campus', 'community college',
+    'school district', 'high school',
+    'outlet mall', 'power center', 'lifestyle center', 'town center',
+    'grocery store', 'supermarket', 'big box', 'home depot', 'lowes', 'walmart',
+    'target', 'costco', 'sams club', 'aldi',
+    'church', 'worship', 'medical office', 'urgent care', 'dental',
+    'fitness center', 'gym ', 'ymca', 'apartment complex', 'multi-family'
   ],
   industrial: [
     'data center', 'cable support', 'cord tree', 'spill containment', 'osha',
@@ -37,7 +51,10 @@ const LIFECYCLE_KEYWORDS = {
     'renewable energy', 'rooftop', 'chemical plant', 'refinery', 'oil gas',
     'manufacturing', 'warehouse', 'distribution center', 'logistics',
     'cold storage', 'fulfillment center', 'wind farm', 'transmission line',
-    'campus', 'hospital', 'medical center', 'university'
+    'hospital', 'medical center', 'university',
+    'campus expansion', 'research facility', 'laboratory',
+    'pharmaceutical', 'biotech', 'food processing', 'brewery', 'distillery',
+    'recycling facility', 'water treatment', 'wastewater'
   ],
   construction: [
     'construction entrance', 'trackout', 'sediment control', 'erosion control',
@@ -49,16 +66,38 @@ const LIFECYCLE_KEYWORDS = {
   ]
 };
 
+// Keywords that indicate government-funded work (required for municipal classification)
+const GOVERNMENT_INDICATORS = [
+  'city of ', 'town of ', 'county of ', 'village of ', 'borough of ',
+  'state of ', 'department of', 'public works', 'municipal', 'government',
+  'federal', 'fdot', 'txdot', 'caltrans', 'ncdot', 'odot', 'mdot', 'vdot',
+  'department of transportation', 'dot ', 'fhwa', 'grant funded',
+  'public safety', 'city council', 'board of', 'commission',
+  'school district', 'public school', 'township', 'municipality',
+  'state highway', 'county road', 'public transit', 'metro ',
+  'transit authority', 'port authority', 'housing authority'
+];
+
 class ConstructionNewsExpanded {
   constructor() {
     this.anthropic = new Anthropic();
   }
 
   /**
-   * Classify a project result into a lifecycle stage.
+   * Classify a project result into a single lifecycle stage (primary vertical).
    * Exported as static so the heatmap API can reuse it.
    */
   static classifyLifecycleStage(result) {
+    const verticals = ConstructionNewsExpanded.classifyAllVerticals(result);
+    return verticals[0] || 'construction';
+  }
+
+  /**
+   * Classify a project into ALL matching verticals (returns array).
+   * Municipal requires government-funded indicators to qualify.
+   * A project like "City of Austin parking garage" → ['parking', 'municipal']
+   */
+  static classifyAllVerticals(result) {
     const text = [
       result.projectName || '',
       result.projectType || '',
@@ -67,20 +106,39 @@ class ConstructionNewsExpanded {
       result.generalContractor || ''
     ].join(' ').toLowerCase();
 
-    // Check most specific first, broadest last
+    const matched = [];
+
+    // Check each vertical for keyword matches
+    for (const [vertical, keywords] of Object.entries(LIFECYCLE_KEYWORDS)) {
+      if (vertical === 'municipal') continue; // handled separately below
+      for (const kw of keywords) {
+        if (text.includes(kw)) {
+          matched.push(vertical);
+          break;
+        }
+      }
+    }
+
+    // Municipal requires BOTH a municipal keyword match AND a government indicator
+    let hasMunicipalKeyword = false;
     for (const kw of LIFECYCLE_KEYWORDS.municipal) {
-      if (text.includes(kw)) return 'municipal';
+      if (text.includes(kw)) { hasMunicipalKeyword = true; break; }
     }
-    for (const kw of LIFECYCLE_KEYWORDS.parking) {
-      if (text.includes(kw)) return 'parking';
+    if (hasMunicipalKeyword) {
+      const hasGovIndicator = GOVERNMENT_INDICATORS.some(gi => text.includes(gi));
+      if (hasGovIndicator) {
+        matched.push('municipal');
+      }
     }
-    for (const kw of LIFECYCLE_KEYWORDS.industrial) {
-      if (text.includes(kw)) return 'industrial';
-    }
-    for (const kw of LIFECYCLE_KEYWORDS.construction) {
-      if (text.includes(kw)) return 'construction';
-    }
-    return 'construction';
+
+    // If nothing matched, default to construction
+    if (matched.length === 0) return ['construction'];
+
+    // Sort: put the most specific/relevant vertical first
+    const priority = ['parking', 'industrial', 'municipal', 'construction'];
+    matched.sort((a, b) => priority.indexOf(a) - priority.indexOf(b));
+
+    return [...new Set(matched)];
   }
 
   /**
@@ -165,37 +223,71 @@ class ConstructionNewsExpanded {
     );
     results.push(...warehouseResults);
 
-    // Category 4: Retail & commercial development
+    // Category 4: Retail & commercial development (strip malls, shopping centers)
     const retailResults = await this._searchCategory(
       'commercial development',
       [
         'shopping center construction groundbreaking 2026',
+        'strip mall construction project awarded 2026',
         'mixed-use development construction start 2026',
         'hotel construction project breaking ground',
         'retail center development construction awarded',
-        'commercial office building construction 2026 contractor'
+        'outlet mall lifestyle center construction 2026',
+        'commercial office building construction 2026 contractor',
+        'big box retail store construction groundbreaking 2026'
       ],
       icp,
-      'parking_industrial'
+      'parking'
     );
     results.push(...retailResults);
 
-    // Category 5: University & hospital campus
+    // Category 5: University, college & school campus
     const campusResults = await this._searchCategory(
       'campus construction',
       [
         'university campus construction project 2026',
-        'hospital medical center expansion construction awarded',
-        'college dormitory construction groundbreaking',
-        'medical campus construction breaking ground 2026',
-        'university research building construction start'
+        'college dormitory construction groundbreaking 2026',
+        'community college expansion construction awarded',
+        'university research building construction start',
+        'school district new school construction 2026',
+        'university parking garage construction project'
       ],
       icp,
-      'construction'
+      'parking'
     );
     results.push(...campusResults);
 
-    // Category 6: Renewable energy & EV infrastructure
+    // Category 6: Sports facilities & event venues
+    const sportsResults = await this._searchCategory(
+      'sports facility construction',
+      [
+        'sports complex construction groundbreaking 2026',
+        'stadium arena construction project awarded 2026',
+        'athletic facility construction breaking ground',
+        'recreation center construction project 2026',
+        'amphitheater event venue construction awarded',
+        'convention center expansion construction 2026'
+      ],
+      icp,
+      'parking'
+    );
+    results.push(...sportsResults);
+
+    // Category 7: Hospital & medical campus
+    const medicalResults = await this._searchCategory(
+      'medical facility construction',
+      [
+        'hospital medical center expansion construction awarded 2026',
+        'medical campus construction breaking ground 2026',
+        'urgent care medical office construction project',
+        'hospital parking garage construction 2026'
+      ],
+      icp,
+      'industrial'
+    );
+    results.push(...medicalResults);
+
+    // Category 8: Renewable energy & EV infrastructure
     const energyResults = await this._searchCategory(
       'energy infrastructure',
       [
@@ -206,7 +298,7 @@ class ConstructionNewsExpanded {
         'battery gigafactory construction breaking ground'
       ],
       icp,
-      'construction'
+      'industrial'
     );
     results.push(...energyResults);
 
@@ -325,7 +417,8 @@ If nothing relevant found, return []. Return ONLY the JSON array.`
             matchedIcpFields: ['construction_news_expanded', category],
             notes: r.notes || `Found via expanded news: "${query}"`
           };
-          result.lifecycleStage = ConstructionNewsExpanded.classifyLifecycleStage(result) || defaultStage;
+          result.verticals = ConstructionNewsExpanded.classifyAllVerticals(result);
+          result.lifecycleStage = result.verticals[0] || defaultStage;
           return result;
         });
         return results;
@@ -378,9 +471,9 @@ If nothing relevant found, return []. Return ONLY the JSON array.`
   _buildRegionalQuery(vertical, stateList) {
     const year = new Date().getFullYear();
     const queries = {
-      parking: `parking garage parking lot construction project awarded ${year} in ${stateList}`,
-      industrial: `data center warehouse industrial plant construction groundbreaking ${year} in ${stateList}`,
-      municipal: `traffic calming Vision Zero speed cushion bike lane project ${year} in ${stateList}`,
+      parking: `parking garage strip mall sports facility university campus construction project awarded ${year} in ${stateList}`,
+      industrial: `data center warehouse hospital manufacturing plant construction groundbreaking ${year} in ${stateList}`,
+      municipal: `traffic calming Vision Zero speed cushion city public works project ${year} in ${stateList}`,
       construction: `highway bridge road construction project awarded contractor ${year} in ${stateList}`
     };
     return queries[vertical] || `construction project ${year} in ${stateList}`;

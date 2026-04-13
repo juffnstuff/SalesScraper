@@ -131,28 +131,33 @@ function updateMap() {
     const coords = getCoords(project.city, project.state);
     if (!coords) continue;
 
-    const stage = project.lifecycleStage || 'construction';
-    const color = STAGE_COLORS[stage] || STAGE_COLORS.construction;
+    // Place a marker in EVERY vertical this project belongs to
+    const verticals = project.verticals && project.verticals.length > 0
+      ? project.verticals
+      : [project.lifecycleStage || 'construction'];
 
-    const jitter = () => (Math.random() - 0.5) * 0.02;
-    const lat = coords[0] + jitter();
-    const lng = coords[1] + jitter();
+    for (const stage of verticals) {
+      if (!markerLayers[stage]) continue;
 
-    const marker = L.circleMarker([lat, lng], {
-      radius: 7,
-      fillColor: color,
-      color: '#fff',
-      weight: 2,
-      opacity: 1,
-      fillOpacity: 0.85
-    });
+      const color = STAGE_COLORS[stage] || STAGE_COLORS.construction;
+      const jitter = () => (Math.random() - 0.5) * 0.02;
+      const lat = coords[0] + jitter();
+      const lng = coords[1] + jitter();
 
-    marker.on('click', () => showProjectDetail(project));
+      const marker = L.circleMarker([lat, lng], {
+        radius: 7,
+        fillColor: color,
+        color: verticals.length > 1 ? '#fbbf24' : '#fff',
+        weight: verticals.length > 1 ? 2.5 : 2,
+        opacity: 1,
+        fillOpacity: 0.85
+      });
 
-    const label = escapeHtml(project.projectName).substring(0, 50);
-    marker.bindTooltip(label, { direction: 'top', offset: [0, -8] });
+      marker.on('click', () => showProjectDetail(project));
 
-    if (markerLayers[stage]) {
+      const label = escapeHtml(project.projectName).substring(0, 50);
+      marker.bindTooltip(label, { direction: 'top', offset: [0, -8] });
+
       markerLayers[stage].addLayer(marker);
     }
   }
@@ -197,7 +202,10 @@ function showProjectList(stage) {
   lastViewedStage = stage;
   const filtered = stage === 'all'
     ? allProjects
-    : allProjects.filter(p => p.lifecycleStage === stage);
+    : allProjects.filter(p => {
+        const verts = p.verticals && p.verticals.length > 0 ? p.verticals : [p.lifecycleStage || 'construction'];
+        return verts.includes(stage);
+      });
 
   currentListProjects = filtered;
   const label = stage === 'all' ? 'All Projects' : STAGE_LABELS[stage] || stage;
@@ -222,10 +230,13 @@ function showProjectList(stage) {
     const location = [p.city, p.state].filter(Boolean).join(', ');
     const hasContractors = p.contractors && p.contractors.length > 0;
 
+    const verts = p.verticals && p.verticals.length > 0 ? p.verticals : [p.lifecycleStage || 'construction'];
+    const badges = verts.map(v => `<span class="badge ms-1 flex-shrink-0" style="background:${STAGE_COLORS[v] || '#ea580c'};color:white;font-size:0.55rem;">${v}</span>`).join('');
+
     html += `<div class="project-list-item" onclick="showProjectDetailByIndex(${i})">
       <div class="d-flex justify-content-between align-items-start">
         <strong class="small" style="line-height:1.3;">${escapeHtml(p.projectName).substring(0, 60)}</strong>
-        <span class="badge ms-1 flex-shrink-0" style="background:${stColor};color:white;font-size:0.6rem;">${p.lifecycleStage}</span>
+        <span class="flex-shrink-0">${badges}</span>
       </div>
       <div class="d-flex justify-content-between align-items-center mt-1">
         <small class="text-muted"><i class="bi bi-geo-alt"></i> ${escapeHtml(location)}</small>
@@ -268,9 +279,13 @@ function showProjectDetail(project) {
 
   let html = '<div class="p-3">';
 
-  // Project name
+  // Project name + all vertical badges
   html += `<h6 class="mb-1">${escapeHtml(project.projectName)}</h6>`;
-  html += `<span class="badge" style="background:${color}; color:white; font-size:0.7rem;">${STAGE_LABELS[stage] || stage}</span>`;
+  const detailVerts = project.verticals && project.verticals.length > 0 ? project.verticals : [stage];
+  for (const v of detailVerts) {
+    const vc = STAGE_COLORS[v] || color;
+    html += `<span class="badge me-1" style="background:${vc}; color:white; font-size:0.7rem;">${STAGE_LABELS[v] || v}</span>`;
+  }
 
   // Project status badge
   if (project.projectStatus && project.projectStatus !== 'Unknown') {
@@ -580,12 +595,17 @@ function mergeProjects(newProjects) {
   }
 
   updateMap();
+  recalcStats();
+}
+
+function recalcStats() {
+  const hasVert = (p, v) => (p.verticals && p.verticals.length > 0 ? p.verticals : [p.lifecycleStage || 'construction']).includes(v);
   updateStats({
     total: allProjects.length,
-    parking: allProjects.filter(p => p.lifecycleStage === 'parking').length,
-    industrial: allProjects.filter(p => p.lifecycleStage === 'industrial').length,
-    municipal: allProjects.filter(p => p.lifecycleStage === 'municipal').length,
-    construction: allProjects.filter(p => p.lifecycleStage === 'construction').length
+    parking: allProjects.filter(p => hasVert(p, 'parking')).length,
+    industrial: allProjects.filter(p => hasVert(p, 'industrial')).length,
+    municipal: allProjects.filter(p => hasVert(p, 'municipal')).length,
+    construction: allProjects.filter(p => hasVert(p, 'construction')).length
   });
 }
 

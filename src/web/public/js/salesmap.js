@@ -142,7 +142,7 @@ async function loadData() {
   }
 }
 
-// ── Dynamic Year Buttons ──
+// ── Dynamic Year Dropdown (multi-select with checkboxes) ──
 function buildYearButtons() {
   const years = new Set();
   for (const txn of allTransactions) {
@@ -150,19 +150,65 @@ function buildYearButtons() {
     if (y) years.add(y);
   }
   const sorted = [...years].sort((a, b) => b - a);
-  const container = document.getElementById('yearButtons');
-  container.innerHTML = '';
+  const menu = document.getElementById('yearDropdownMenu');
+  menu.innerHTML = '';
   activeYears = {};
+
+  // "Select All / Deselect All" toggle at the top
+  const toggleLi = document.createElement('li');
+  toggleLi.innerHTML = `<a class="dropdown-item small" href="#" id="yearToggleAll"><strong>Select All</strong></a>`;
+  menu.appendChild(toggleLi);
+  const divider = document.createElement('li');
+  divider.innerHTML = '<hr class="dropdown-divider my-1">';
+  menu.appendChild(divider);
 
   for (const y of sorted) {
     activeYears[String(y)] = true;
-    const btn = document.createElement('button');
-    btn.className = 'btn btn-sm btn-secondary year-toggle active';
-    btn.dataset.year = String(y);
-    btn.style.minWidth = '55px';
-    btn.textContent = y;
-    btn.addEventListener('click', () => toggleYear(btn));
-    container.appendChild(btn);
+    const li = document.createElement('li');
+    li.innerHTML = `<label class="dropdown-item small d-flex align-items-center gap-2 mb-0" style="cursor:pointer;">
+      <input type="checkbox" class="form-check-input year-checkbox" value="${y}" checked> ${y}
+    </label>`;
+    menu.appendChild(li);
+  }
+
+  // Wire up checkbox changes
+  menu.querySelectorAll('.year-checkbox').forEach(cb => {
+    cb.addEventListener('change', () => {
+      activeYears[cb.value] = cb.checked;
+      updateYearDropdownLabel();
+      updateMap();
+    });
+  });
+
+  // Wire up select all / deselect all
+  document.getElementById('yearToggleAll').addEventListener('click', (e) => {
+    e.preventDefault();
+    const allChecked = Object.values(activeYears).every(v => v);
+    const newState = !allChecked;
+    menu.querySelectorAll('.year-checkbox').forEach(cb => {
+      cb.checked = newState;
+      activeYears[cb.value] = newState;
+    });
+    updateYearDropdownLabel();
+    updateMap();
+  });
+
+  updateYearDropdownLabel();
+}
+
+function updateYearDropdownLabel() {
+  const btn = document.getElementById('yearDropdownBtn');
+  const allYears = Object.keys(activeYears);
+  const selected = allYears.filter(y => activeYears[y]);
+
+  if (selected.length === 0) {
+    btn.textContent = 'No Years';
+  } else if (selected.length === allYears.length) {
+    btn.textContent = 'All Years';
+  } else if (selected.length <= 3) {
+    btn.textContent = selected.sort((a, b) => b - a).join(', ');
+  } else {
+    btn.textContent = selected.length + ' Years';
   }
 }
 
@@ -171,23 +217,6 @@ function getTransactionYear(txn) {
   const parts = txn.date.split('/');
   if (parts.length === 3) return parseInt(parts[2]); // M/D/YYYY
   return new Date(txn.date).getFullYear();
-}
-
-function toggleYear(btn) {
-  const year = btn.dataset.year;
-  activeYears[year] = !activeYears[year];
-
-  if (activeYears[year]) {
-    btn.classList.add('active');
-    btn.classList.remove('btn-outline-secondary');
-    btn.classList.add('btn-secondary');
-  } else {
-    btn.classList.remove('active');
-    btn.classList.remove('btn-secondary');
-    btn.classList.add('btn-outline-secondary');
-  }
-
-  updateMap();
 }
 
 // ── Map Rendering ──

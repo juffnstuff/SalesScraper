@@ -55,6 +55,7 @@ async function getProjects(cutoffDate) {
       source: r.source,
       relevanceScore: parseFloat(r.relevance_score) || 0,
       lifecycleStage: r.lifecycle_stage,
+      verticals: r.verticals || [r.lifecycle_stage || 'construction'],
       projectStatus: r.project_status,
       notes: r.notes,
       contractors: contractorMap[r.id] || [],
@@ -80,6 +81,7 @@ async function getProjects(cutoffDate) {
       source: p.source || '',
       relevanceScore: p.relevanceScore || 0,
       lifecycleStage: p.lifecycleStage || 'construction',
+      verticals: p.verticals || [p.lifecycleStage || 'construction'],
       notes: (p.notes || '').substring(0, 300),
       contractors: p.contractors || [],
       contractorSearched: p.contractorSearched || false
@@ -99,16 +101,21 @@ async function mergeProjects(results) {
       const status = ConstructionNewsExpanded.classifyProjectStatus({ ...r, bidDate: r.bidDate || '', notes: r.notes || '' });
 
       try {
+        const verticals = r.verticals || ConstructionNewsExpanded.classifyAllVerticals({
+          projectName: name, projectType: r.projectType || '', notes: r.notes || '',
+          owner: r.owner || '', generalContractor: r.generalContractor || ''
+        });
+
         const result = await db.query(`
-          INSERT INTO projects (project_name, project_type, city, state, estimated_value, bid_date, owner, general_contractor, source_url, source, relevance_score, lifecycle_stage, project_status, notes, scanned_at)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())
+          INSERT INTO projects (project_name, project_type, city, state, estimated_value, bid_date, owner, general_contractor, source_url, source, relevance_score, lifecycle_stage, verticals, project_status, notes, scanned_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW())
           ON CONFLICT (project_name, state) DO NOTHING
           RETURNING id
         `, [
           name, r.projectType || '', r.geography?.city || r.city || '', state,
           r.estimatedValue || 0, r.bidDate || '', r.owner || '', r.generalContractor || '',
           r.sourceUrl || '', r.source || 'construction_news_expanded', r.relevanceScore || 0,
-          stage, status, (r.notes || '').substring(0, 500)
+          stage, JSON.stringify(verticals), status, (r.notes || '').substring(0, 500)
         ]);
         if (result.rows.length > 0) newCount++;
       } catch (e) {
@@ -147,6 +154,10 @@ async function mergeProjects(results) {
     if (seen.has(key)) continue;
     seen.add(key);
     newCount++;
+    const verticals = r.verticals || ConstructionNewsExpanded.classifyAllVerticals({
+      projectName: r.projectName || '', projectType: r.projectType || '', notes: r.notes || '',
+      owner: r.owner || '', generalContractor: r.generalContractor || ''
+    });
     cache.projects.push({
       projectName: r.projectName || 'Unknown',
       projectType: r.projectType || '',
@@ -159,7 +170,8 @@ async function mergeProjects(results) {
       sourceUrl: r.sourceUrl || '',
       source: r.source || 'construction_news_expanded',
       relevanceScore: r.relevanceScore || 0,
-      lifecycleStage: r.lifecycleStage || ConstructionNewsExpanded.classifyLifecycleStage(r),
+      lifecycleStage: verticals[0] || ConstructionNewsExpanded.classifyLifecycleStage(r),
+      verticals: verticals,
       notes: (r.notes || '').substring(0, 300),
       scannedAt: new Date().toISOString()
     });

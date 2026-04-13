@@ -601,19 +601,26 @@ app.get('/api/heatmap-data', ensureAuth, async (req, res) => {
   try {
     let projects = await dataLayer.getProjects(cutoff);
 
-    // Add projectStatus if not already set
-    projects = projects.map(p => ({
-      ...p,
-      projectStatus: p.projectStatus || ConstructionNewsExpanded.classifyProjectStatus(p),
-      lifecycleStage: p.lifecycleStage || ConstructionNewsExpanded.classifyLifecycleStage(p)
-    }));
+    // Add projectStatus and verticals if not already set
+    projects = projects.map(p => {
+      const verticals = p.verticals && p.verticals.length > 0
+        ? p.verticals
+        : ConstructionNewsExpanded.classifyAllVerticals(p);
+      return {
+        ...p,
+        projectStatus: p.projectStatus || ConstructionNewsExpanded.classifyProjectStatus(p),
+        lifecycleStage: p.lifecycleStage || verticals[0] || 'construction',
+        verticals
+      };
+    });
 
+    // Count by vertical — a project in multiple verticals is counted in each
     const summary = {
       total: projects.length,
-      parking: projects.filter(p => p.lifecycleStage === 'parking').length,
-      industrial: projects.filter(p => p.lifecycleStage === 'industrial').length,
-      municipal: projects.filter(p => p.lifecycleStage === 'municipal').length,
-      construction: projects.filter(p => p.lifecycleStage === 'construction').length
+      parking: projects.filter(p => p.verticals.includes('parking')).length,
+      industrial: projects.filter(p => p.verticals.includes('industrial')).length,
+      municipal: projects.filter(p => p.verticals.includes('municipal')).length,
+      construction: projects.filter(p => p.verticals.includes('construction')).length
     };
 
     const byState = {};

@@ -39,7 +39,14 @@
       </select>
       <span class="mx-2 text-muted">|</span>
       <span class="fw-bold small text-muted">YEARS:</span>
-      <span id="yearButtons"></span>
+      <div class="dropdown d-inline-block">
+        <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="yearDropdownBtn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+          All Years
+        </button>
+        <ul class="dropdown-menu" id="yearDropdownMenu" style="min-width: 140px;">
+          <!-- Populated dynamically -->
+        </ul>
+      </div>
     </div>
   </div>
   <div class="col-md-3 text-end">

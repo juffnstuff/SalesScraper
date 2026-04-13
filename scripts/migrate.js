@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS projects (
   source TEXT DEFAULT 'construction_news_expanded',
   relevance_score NUMERIC DEFAULT 0,
   lifecycle_stage TEXT DEFAULT 'construction',
+  verticals JSONB DEFAULT '["construction"]',
   project_status TEXT DEFAULT 'Unknown',
   notes TEXT DEFAULT '',
   scanned_at TIMESTAMPTZ DEFAULT NOW(),
@@ -165,22 +166,27 @@ async function seedProjects() {
     return 0;
   }
 
+  const ConstructionNewsExpanded = require('../src/prospecting/sources/construction_news_expanded');
+
   const cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
   const projects = cache.projects || [];
   let count = 0;
 
   for (const p of projects) {
     try {
+      const verticals = p.verticals || ConstructionNewsExpanded.classifyAllVerticals(p);
+      const primaryStage = p.lifecycleStage || verticals[0] || 'construction';
+
       const result = await pool.query(`
-        INSERT INTO projects (project_name, project_type, city, state, estimated_value, bid_date, owner, general_contractor, source_url, source, relevance_score, lifecycle_stage, notes, scanned_at, contractor_searched)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        INSERT INTO projects (project_name, project_type, city, state, estimated_value, bid_date, owner, general_contractor, source_url, source, relevance_score, lifecycle_stage, verticals, notes, scanned_at, contractor_searched)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
         ON CONFLICT (project_name, state) DO NOTHING
         RETURNING id
       `, [
         p.projectName || 'Unknown', p.projectType || '', p.city || '', p.state || '',
         p.estimatedValue || 0, p.bidDate || '', p.owner || '', p.generalContractor || '',
         p.sourceUrl || '', p.source || 'construction_news_expanded', p.relevanceScore || 0,
-        p.lifecycleStage || 'construction', (p.notes || '').substring(0, 500),
+        primaryStage, JSON.stringify(verticals), (p.notes || '').substring(0, 500),
         p.scannedAt || new Date().toISOString(), p.contractorSearched || false
       ]);
 
