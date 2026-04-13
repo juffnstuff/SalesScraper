@@ -300,10 +300,20 @@ async function getTransactions(repId, reps) {
 function classifyEstimateStatusFromDb(status, nsStatus, lostReason) {
   const s = (status || '').toLowerCase();
   const ns = (nsStatus || '').toLowerCase();
-  const lr = (lostReason || '').toLowerCase();
+  const lr = (lostReason || '').trim();
 
-  if (ns === 'converted' || s === 'processed' || s === 'closed') return 'converted';
-  if (lr || ns === 'closed' || s === 'voided' || ns === 'lost' || ns === 'voided') return 'lost';
+  // Explicitly converted
+  if (ns === 'converted' || s === 'processed') return 'converted';
+  // Closed: check lost reason to distinguish converted vs lost
+  if (s === 'closed' || ns === 'closed') {
+    if (!lr) return 'converted'; // closed without lost reason = converted
+    if (lr.toLowerCase().includes('alternate rf solution')) return 'converted'; // bought different RF product
+    return 'lost';
+  }
+  // Expired / voided = lost
+  if (s === 'expired' || ns === 'expired' || s === 'voided' || ns === 'voided') return 'lost';
+  // Has a lost reason regardless = lost
+  if (lr) return 'lost';
   return 'open';
 }
 

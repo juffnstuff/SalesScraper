@@ -178,12 +178,20 @@ function loadRunLogs(repId) {
 function classifyEstimateStatus(statusDisplay, lostReason) {
   if (!statusDisplay) return 'open';
   const s = statusDisplay.toLowerCase();
+  const lr = (lostReason || '').trim();
+
+  // Explicitly converted
   if (s.includes('processed') || s.includes('converted') || s.includes('closed won')) return 'converted';
-  if (s.includes('closed') || s.includes('expired') || s.includes('voided') || s.includes('declined')) {
-    // "Lost: Alternate RF Solution/Quote" means customer bought a different RF product — not truly lost
-    if (lostReason && lostReason.toLowerCase().includes('alternate rf solution')) return 'converted';
+  // Closed: check lost reason to distinguish converted vs lost
+  if (s.includes('closed')) {
+    if (!lr) return 'converted'; // closed without lost reason = converted
+    if (lr.toLowerCase().includes('alternate rf solution')) return 'converted'; // bought different RF product
     return 'lost';
   }
+  // Expired / voided = lost
+  if (s.includes('expired') || s.includes('voided') || s.includes('declined')) return 'lost';
+  // Has a lost reason = lost
+  if (lr) return 'lost';
   return 'open';
 }
 
