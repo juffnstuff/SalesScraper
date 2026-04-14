@@ -12,7 +12,10 @@
 const Anthropic = require('@anthropic-ai/sdk');
 
 // RubberForm's 4 market verticals — keyword classification
-// Municipal is restricted to government-funded / public sector projects only.
+// Brad Backman: Parking & Private Facilities (hospitals, strip malls, stadiums, colleges, parking lots) — private/non-government only
+// Galen Reich: Industrial (data centers, warehouses, industrial facilities, spill containment)
+// Nick Zielinski: Municipal & Government (traffic calming, bus/bike lane, street defenders) — government-funded only
+// Andrew Gibson: Construction (bridge projects, site work, trackout/sediment control) — active construction sites
 const LIFECYCLE_KEYWORDS = {
   municipal: [
     'traffic calming', 'speed cushion', 'speed table', 'vision zero', 'safe streets',
@@ -21,7 +24,7 @@ const LIFECYCLE_KEYWORDS = {
     'speed reduction', 'road diet', 'protected intersection', 'curb extension',
     'city council', 'neighborhood safety', 'traffic study', 'bicycle',
     'traffic safety', 'speed limit', 'speed hump',
-    'traffic island', 'delineator', 'meridian',
+    'traffic island', 'delineator', 'meridian', 'street defender',
     'public works', 'city of ', 'town of ', 'county of ',
     'state dot', 'department of transportation', 'fdot', 'txdot', 'caltrans',
     'government funded', 'federal grant', 'municipal bond', 'public safety',
@@ -34,14 +37,16 @@ const LIFECYCLE_KEYWORDS = {
     'shopping center', 'strip mall', 'retail center', 'mixed-use',
     'hotel', 'office building', 'property management', 'commercial development',
     'airport parking', 'asphalt',
+    'hospital', 'medical center', 'medical campus', 'medical office', 'urgent care', 'dental',
+    'university', 'college campus', 'university campus', 'community college',
+    'campus expansion', 'dormitory', 'student housing',
+    'school district', 'high school',
     'sports facility', 'sports complex', 'stadium', 'arena', 'amphitheater',
     'convention center', 'event center', 'athletic complex', 'recreation center',
-    'college campus', 'university campus', 'community college',
-    'school district', 'high school',
     'outlet mall', 'power center', 'lifestyle center', 'town center',
     'grocery store', 'supermarket', 'big box', 'home depot', 'lowes', 'walmart',
     'target', 'costco', 'sams club', 'aldi',
-    'church', 'worship', 'medical office', 'urgent care', 'dental',
+    'church', 'worship',
     'fitness center', 'gym ', 'ymca', 'apartment complex', 'multi-family'
   ],
   industrial: [
@@ -51,8 +56,7 @@ const LIFECYCLE_KEYWORDS = {
     'renewable energy', 'rooftop', 'chemical plant', 'refinery', 'oil gas',
     'manufacturing', 'warehouse', 'distribution center', 'logistics',
     'cold storage', 'fulfillment center', 'wind farm', 'transmission line',
-    'hospital', 'medical center', 'university',
-    'campus expansion', 'research facility', 'laboratory',
+    'research facility', 'laboratory',
     'pharmaceutical', 'biotech', 'food processing', 'brewery', 'distillery',
     'recycling facility', 'water treatment', 'wastewater'
   ],
