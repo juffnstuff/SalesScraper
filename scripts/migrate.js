@@ -366,6 +366,11 @@ async function reclassifyVerticals() {
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS verticals JSONB DEFAULT '["construction"]'
   `);
 
+  // Sanitize absurd estimated values (parser bugs produced trillions+)
+  await pool.query(`
+    UPDATE projects SET estimated_value = 0 WHERE estimated_value > 50000000000
+  `);
+
   const { rows } = await pool.query(
     'SELECT id, project_name, project_type, notes, owner, general_contractor, lifecycle_stage FROM projects'
   );

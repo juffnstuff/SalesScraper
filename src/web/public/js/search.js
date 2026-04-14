@@ -55,7 +55,7 @@ function renderProjectList() {
 
   for (let i = 0; i < allProjects.length; i++) {
     const p = allProjects[i];
-    const value = p.estimatedValue > 0 ? '$' + Number(p.estimatedValue).toLocaleString() : '';
+    const value = p.estimatedValue > 0 ? fmtValue(p.estimatedValue) : '';
     const location = [p.city, p.state].filter(Boolean).join(', ');
     const statusColors = { Active: '#16a34a', Awarded: '#2563eb', Bidding: '#ea580c', Planned: '#6b7280', Completed: '#8b5cf6' };
     const sc = statusColors[p.projectStatus] || '#94a3b8';
@@ -106,7 +106,7 @@ async function selectProject(index) {
   const location = [selectedProject.city, selectedProject.state].filter(Boolean).join(', ');
   html += '<div class="row g-3 mb-3"><div class="col-md-6">';
   if (location) html += `<div><small class="text-muted">Location:</small> <strong>${esc(location)}</strong></div>`;
-  if (selectedProject.estimatedValue > 0) html += `<div><small class="text-muted">Value:</small> <strong class="text-success">$${Number(selectedProject.estimatedValue).toLocaleString()}</strong></div>`;
+  if (selectedProject.estimatedValue > 0) html += `<div><small class="text-muted">Value:</small> <strong class="text-success">${fmtValue(selectedProject.estimatedValue)}</strong></div>`;
   if (selectedProject.bidDate) html += `<div><small class="text-muted">Timeline:</small> ${esc(selectedProject.bidDate)}</div>`;
   if (selectedProject.owner) html += `<div><small class="text-muted">Owner:</small> ${esc(selectedProject.owner)}</div>`;
   if (selectedProject.generalContractor) html += `<div><small class="text-muted">GC:</small> ${esc(selectedProject.generalContractor)}</div>`;
@@ -289,6 +289,14 @@ function closeDetail() {
   document.getElementById('detailCard').style.display = 'none';
   selectedProject = null;
   renderProjectList();
+}
+
+function fmtValue(n) {
+  if (!n || n <= 0) return '';
+  if (n >= 1000000000) return '$' + (n / 1000000000).toFixed(1) + 'B';
+  if (n >= 1000000) return '$' + (n / 1000000).toFixed(1) + 'M';
+  if (n >= 1000) return '$' + (n / 1000).toFixed(0) + 'K';
+  return '$' + n.toLocaleString();
 }
 
 function esc(str) {

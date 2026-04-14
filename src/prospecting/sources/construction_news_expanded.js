@@ -434,14 +434,39 @@ If nothing relevant found, return []. Return ONLY the JSON array.`
 
   _parseValue(val) {
     if (!val) return 0;
-    if (typeof val === 'number') return val;
-    const str = String(val).replace(/[^0-9.bmkBMK]/g, '');
-    let num = parseFloat(str);
+    if (typeof val === 'number') {
+      // Already a number — sanity cap at $50B (no single project exceeds this)
+      return val > 50000000000 ? 0 : val;
+    }
+
+    const str = String(val).trim();
+
+    // Try to detect multiplier suffix BEFORE stripping
+    const upper = str.toUpperCase();
+    let multiplier = 1;
+    if (/billion/i.test(str) || /\d\s*B$/i.test(str.trim())) multiplier = 1000000000;
+    else if (/million/i.test(str) || /\d\s*M$/i.test(str.trim()) || /\d\s*M\b/.test(str)) multiplier = 1000000;
+    else if (/thousand/i.test(str) || /\d\s*K$/i.test(str.trim()) || /\d\s*K\b/.test(str)) multiplier = 1000;
+
+    // Extract the number, including commas as thousands separators
+    // Matches: "1,864,000" or "1.5" or "300" or "12,000,000.50"
+    const match = str.match(/[\d,]+(?:\.\d+)?/);
+    if (!match) return 0;
+
+    // Remove commas and parse
+    let num = parseFloat(match[0].replace(/,/g, ''));
     if (isNaN(num)) return 0;
-    const upper = String(val).toUpperCase();
-    if (upper.includes('B')) num *= 1000000000;
-    else if (upper.includes('M')) num *= 1000000;
-    else if (upper.includes('K')) num *= 1000;
+
+    // If a multiplier keyword was found AND the number is small (like 1.5, 300),
+    // apply the multiplier. But if the number is already large (like 1864000),
+    // the AI already expanded it — don't multiply again.
+    if (multiplier > 1 && num < 10000) {
+      num *= multiplier;
+    }
+
+    // Sanity cap: no construction project exceeds $50 billion
+    if (num > 50000000000) return 0;
+
     return num;
   }
 
