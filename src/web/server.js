@@ -1256,6 +1256,36 @@ function startNightlyScanScheduler() {
         }
       }
 
+      // Geocode un-geocoded transactions (200 per night, ~3.5 min)
+      try {
+        const db = require('./db');
+        if (await db.isReady()) {
+          const { geocodeAddress, delay: geocodeDelay } = require('./geocoder');
+          const { rows } = await db.query(`
+            SELECT id, street, city, state, zip FROM transactions
+            WHERE lat IS NULL AND street IS NOT NULL AND street != ''
+            ORDER BY id LIMIT 200
+          `);
+          if (rows.length > 0) {
+            console.log(`[Nightly] Geocoding ${rows.length} transactions...`);
+            let geocoded = 0;
+            for (const txn of rows) {
+              try {
+                const coords = await geocodeAddress(txn.street, txn.city, txn.state, txn.zip);
+                if (coords) {
+                  await db.query('UPDATE transactions SET lat = $1, lng = $2 WHERE id = $3', [coords.lat, coords.lng, txn.id]);
+                  geocoded++;
+                }
+              } catch { /* skip */ }
+              await geocodeDelay(1050);
+            }
+            console.log(`[Nightly] Geocoded ${geocoded}/${rows.length} transactions.`);
+          }
+        }
+      } catch (e) {
+        console.error('[Nightly] Geocoding error:', e.message);
+      }
+
       // Schedule the next run (tomorrow at 2am EST)
       scheduleNext();
     }, delay);
