@@ -284,6 +284,36 @@ class NetSuiteClient {
     return 'open';
   }
 
+  /**
+   * Get line items with actual part codes for all transactions.
+   * Returns itemId (the SKU/part number), not just the internal item ID.
+   * @param {string} tranType - 'SalesOrd' or 'Estimate'
+   * @param {number} days - lookback days (default 730)
+   */
+  async getLineItemsWithPartCodes(tranType, days = 730) {
+    const lookback = this._lookbackDateFromDays(days);
+    const typeFilter = tranType === 'Estimate' ? "= 'Estimate'" : "IN ('SalesOrd', 'Invoice')";
+
+    return this.runSuiteQLPaginated(`
+      SELECT transaction.tranId,
+             item.itemId AS partNumber,
+             transactionLine.item AS internalId,
+             BUILTIN.DF(transactionLine.item) AS itemName,
+             transactionLine.quantity AS qty,
+             transactionLine.amount,
+             transactionLine.rate,
+             item.displayName AS description
+      FROM transactionLine
+        JOIN transaction ON transactionLine.transaction = transaction.id
+        JOIN item ON transactionLine.item = item.id
+      WHERE transaction.type ${typeFilter}
+        AND transaction.tranDate >= TO_DATE('${lookback}', 'YYYY-MM-DD')
+        AND transactionLine.mainLine = 'F'
+        AND transactionLine.amount != 0
+      ORDER BY transaction.tranId, transactionLine.lineSequenceNumber
+    `, `Line items with part codes: ${tranType}`);
+  }
+
   _lookbackDateFromDays(days) {
     const d = new Date();
     d.setDate(d.getDate() - days);
