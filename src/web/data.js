@@ -291,6 +291,8 @@ async function getTransactions(repId, reps) {
         date: r.date, total: parseFloat(r.total) || 0,
         customerName: r.customer_name, memo: r.memo,
         city: r.city, state: r.state, zip: r.zip, street: r.street,
+        lat: r.lat ? parseFloat(r.lat) : null,
+        lng: r.lng ? parseFloat(r.lng) : null,
         repName: repLookup[r.sales_rep] || '',
         vertical: r.vertical, hqCity: r.hq_city, hqState: r.hq_state,
         firstOrder: r.first_order, firstQuote: r.first_quote,

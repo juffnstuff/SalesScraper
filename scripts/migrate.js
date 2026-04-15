@@ -134,6 +134,8 @@ CREATE TABLE IF NOT EXISTS transactions (
   invoice_status TEXT DEFAULT '',
   items JSONB DEFAULT '[]',
   synced_at TIMESTAMPTZ DEFAULT NOW(),
+  lat NUMERIC,
+  lng NUMERIC,
   UNIQUE(tran_id)
 );
 
@@ -365,6 +367,10 @@ async function reclassifyVerticals() {
   await pool.query(`
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS verticals JSONB DEFAULT '["construction"]'
   `);
+
+  // Ensure lat/lng columns exist on transactions (for geocoding)
+  await pool.query('ALTER TABLE transactions ADD COLUMN IF NOT EXISTS lat NUMERIC');
+  await pool.query('ALTER TABLE transactions ADD COLUMN IF NOT EXISTS lng NUMERIC');
 
   // Sanitize absurd estimated values (parser bugs produced trillions+)
   await pool.query(`

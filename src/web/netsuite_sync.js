@@ -6,6 +6,7 @@
 
 const db = require('./db');
 const NetSuiteClient = require('../discovery/netsuite_client');
+const { geocodeAddress, delay: geocodeDelay } = require('./geocoder');
 
 /**
  * Get the last successful sync cutoff date from the database.
@@ -214,6 +215,13 @@ async function runSync(options = {}) {
     const totalUpserted = result.sales.upserted + result.estimates.upserted;
     console.log(`[NetSuite Sync] Complete: ${totalFetched} fetched, ${totalUpserted} upserted in ${result.durationMs}ms`);
 
+    // Geocode any new transactions that don't have coordinates yet
+    if (totalUpserted > 0) {
+      geocodeNewTransactions().catch(e =>
+        console.warn('[NetSuite Sync] Geocoding failed:', e.message)
+      );
+    }
+
     return result;
 
   } catch (e) {
@@ -271,6 +279,37 @@ async function getSyncStatus() {
   } catch (e) {
     return { lastSync: null, available: false, error: e.message };
   }
+}
+
+/**
+ * Geocode transactions that have an address but no lat/lng.
+ * Runs after sync to fill in coordinates for new records.
+ * Rate limited to 1 req/sec (Census API).
+ */
+async function geocodeNewTransactions() {
+  const { rows } = await db.query(`
+    SELECT id, street, city, state, zip FROM transactions
+    WHERE lat IS NULL AND street IS NOT NULL AND street != ''
+    ORDER BY synced_at DESC
+    LIMIT 200
+  `);
+
+  if (rows.length === 0) return;
+  console.log(`[Geocode] ${rows.length} transactions need geocoding...`);
+
+  let geocoded = 0;
+  for (const txn of rows) {
+    try {
+      const coords = await geocodeAddress(txn.street, txn.city, txn.state, txn.zip);
+      if (coords) {
+        await db.query('UPDATE transactions SET lat = $1, lng = $2 WHERE id = $3', [coords.lat, coords.lng, txn.id]);
+        geocoded++;
+      }
+    } catch { /* skip */ }
+    await geocodeDelay(1050);
+  }
+
+  console.log(`[Geocode] Done: ${geocoded}/${rows.length} geocoded.`);
 }
 
 module.exports = { runSync, getSyncStatus, getLastSyncDate };

@@ -63,8 +63,8 @@ function initMap() {
     maxZoom: 18
   });
 
-  const tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; CARTO &copy; OSM',
+  const tileLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
     subdomains: 'abcd',
     maxZoom: 19
   });
@@ -238,18 +238,26 @@ function buildMarkers() {
   markerCache = { shipped: {}, open: {}, converted: {}, lost: {} };
 
   for (const txn of allTransactions) {
-    const coords = getCoords(txn.city, txn.state);
-    if (!coords) continue;
+    // Prefer geocoded lat/lng, fall back to city lookup
+    let lat, lng, isGeocoded = false;
+    if (txn.lat && txn.lng) {
+      lat = txn.lat;
+      lng = txn.lng;
+      isGeocoded = true;
+    } else {
+      const coords = getCoords(txn.city, txn.state);
+      if (!coords) continue;
+      // Jitter only for non-geocoded (city/state centroid) locations
+      const jitter = () => (Math.random() - 0.5) * 0.02;
+      lat = coords[0] + jitter();
+      lng = coords[1] + jitter();
+    }
 
     const layer = txn.layer;
     if (!markerCache[layer]) continue;
 
     const year = String(getTransactionYear(txn) || 'unknown');
     if (!markerCache[layer][year]) markerCache[layer][year] = [];
-
-    const jitter = () => (Math.random() - 0.5) * 0.02;
-    const lat = coords[0] + jitter();
-    const lng = coords[1] + jitter();
     const color = LAYER_COLORS[layer] || '#666';
 
     const marker = L.circleMarker([lat, lng], {
@@ -262,8 +270,9 @@ function buildMarkers() {
 
     marker._txnData = txn;
     marker.on('click', () => showTransactionDetail(txn));
-    const label = escapeHtml(txn.customerName || txn.tranId || '').substring(0, 50);
-    if (label) marker.bindTooltip(label, { direction: 'top', offset: [0, -8] });
+    const name = escapeHtml(txn.customerName || txn.tranId || '').substring(0, 50);
+    const addr = isGeocoded && txn.street ? `<br><span style="font-size:0.75em;opacity:0.8;">${escapeHtml(txn.street)}, ${escapeHtml(txn.city)}</span>` : '';
+    if (name) marker.bindTooltip(name + addr, { direction: 'top', offset: [0, -8] });
 
     markerCache[layer][year].push(marker);
   }
