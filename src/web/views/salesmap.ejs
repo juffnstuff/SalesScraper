@@ -9,7 +9,7 @@
 <div class="row mb-3">
   <div class="col">
     <h3><i class="bi bi-pin-map-fill text-primary"></i> Sales & Quote Activity Map</h3>
-    <p class="text-muted mb-0">NetSuite sales orders and quotes mapped by shipping address. Live data via SuiteQL.</p>
+    <p class="text-muted mb-0">NetSuite sales orders and quotes mapped by shipping address.</p>
   </div>
 </div>
 
@@ -18,14 +18,14 @@
   <div class="col-md-9">
     <div class="d-flex gap-2 align-items-center flex-wrap">
       <span class="fw-bold small text-muted">LAYERS:</span>
-      <button class="btn btn-sm stage-toggle active" data-stage="shipped" style="background: #16a34a; color: white; border: 2px solid #16a34a;">
-        <i class="bi bi-truck"></i> Shipped Sales
+      <button class="btn btn-sm stage-toggle active" data-stage="quoted" style="background: #16a34a; color: white; border: 2px solid #16a34a;">
+        <i class="bi bi-file-earmark-check"></i> Quote &rarr; Sale
+      </button>
+      <button class="btn btn-sm stage-toggle active" data-stage="direct" style="background: #2563eb; color: white; border: 2px solid #2563eb;">
+        <i class="bi bi-cart-check"></i> Direct Sale
       </button>
       <button class="btn btn-sm stage-toggle active" data-stage="open" style="background: #ea580c; color: white; border: 2px solid #ea580c;">
         <i class="bi bi-file-earmark-text"></i> Open Quotes
-      </button>
-      <button class="btn btn-sm stage-toggle active" data-stage="converted" style="background: #2563eb; color: white; border: 2px solid #2563eb;">
-        <i class="bi bi-check-circle"></i> Converted Quotes
       </button>
       <button class="btn btn-sm stage-toggle active" data-stage="lost" style="background: #dc2626; color: white; border: 2px solid #dc2626;">
         <i class="bi bi-x-circle"></i> Lost Quotes
@@ -44,7 +44,6 @@
           All Years
         </button>
         <ul class="dropdown-menu" id="yearDropdownMenu" style="min-width: 140px;">
-          <!-- Populated dynamically -->
         </ul>
       </div>
     </div>
@@ -87,11 +86,20 @@
 <!-- Summary Stats -->
 <div class="row g-3 mt-2 mb-3">
   <div class="col">
-    <div class="card text-center stat-tile" style="cursor:pointer;" onclick="showTransactionList('shipped')">
+    <div class="card text-center stat-tile" style="cursor:pointer;" onclick="showTransactionList('quoted')">
       <div class="card-body py-2">
-        <div class="stat-value text-success" id="statRevenue">$0</div>
-        <div class="stat-label">Sales Revenue</div>
-        <div class="small text-muted"><span id="statShipped">0</span> orders</div>
+        <div class="stat-value text-success" id="statQuotedRevenue">$0</div>
+        <div class="stat-label">Quote &rarr; Sale</div>
+        <div class="small text-muted"><span id="statQuoted">0</span> orders</div>
+      </div>
+    </div>
+  </div>
+  <div class="col">
+    <div class="card text-center stat-tile" style="cursor:pointer;" onclick="showTransactionList('direct')">
+      <div class="card-body py-2">
+        <div class="stat-value" style="color:#2563eb;" id="statDirectRevenue">$0</div>
+        <div class="stat-label">Direct Sale</div>
+        <div class="small text-muted"><span id="statDirect">0</span> orders</div>
       </div>
     </div>
   </div>
@@ -101,15 +109,6 @@
         <div class="stat-value layer-open" id="statOpenValue">$0</div>
         <div class="stat-label">Open Quotes</div>
         <div class="small text-muted"><span id="statOpen">0</span> quotes</div>
-      </div>
-    </div>
-  </div>
-  <div class="col">
-    <div class="card text-center stat-tile" style="cursor:pointer;" onclick="showTransactionList('converted')">
-      <div class="card-body py-2">
-        <div class="stat-value layer-converted" id="statConvertedValue">$0</div>
-        <div class="stat-label">Converted</div>
-        <div class="small text-muted"><span id="statConverted">0</span> quotes</div>
       </div>
     </div>
   </div>
@@ -126,8 +125,8 @@
     <div class="card text-center stat-tile" style="cursor:pointer;" onclick="showTransactionList('all')">
       <div class="card-body py-2">
         <div class="stat-value" id="statTotal">0</div>
-        <div class="stat-label">Total Transactions</div>
-        <div class="small text-muted" id="statConvRate">--% conv rate</div>
+        <div class="stat-label">Total</div>
+        <div class="small text-muted" id="statDirectPct">--% direct</div>
       </div>
     </div>
   </div>
@@ -141,19 +140,19 @@
         <span class="fw-bold small text-muted">LEGEND:</span>
         <div class="legend-item">
           <span class="legend-dot" style="background: #16a34a;"></span>
-          <small><strong>Shipped Sales</strong> -- Sales orders & invoices</small>
-        </div>
-        <div class="legend-item">
-          <span class="legend-dot" style="background: #ea580c;"></span>
-          <small><strong>Open Quotes</strong> -- Active estimates pending decision</small>
+          <small><strong>Quote &rarr; Sale</strong> &mdash; Sales orders that started as a quote</small>
         </div>
         <div class="legend-item">
           <span class="legend-dot" style="background: #2563eb;"></span>
-          <small><strong>Converted Quotes</strong> -- Estimates that became sales orders</small>
+          <small><strong>Direct Sale</strong> &mdash; Sales orders with no prior quote</small>
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot" style="background: #ea580c;"></span>
+          <small><strong>Open Quotes</strong> &mdash; Active estimates pending decision</small>
         </div>
         <div class="legend-item">
           <span class="legend-dot" style="background: #dc2626;"></span>
-          <small><strong>Lost Quotes</strong> -- Closed or voided estimates</small>
+          <small><strong>Lost Quotes</strong> &mdash; Expired, voided, or declined estimates</small>
         </div>
       </div>
     </div>

@@ -282,9 +282,16 @@ async function getTransactions(repId, reps) {
 
     return rows.map(r => {
       const isEstimate = r.tran_type === 'Estimate';
-      const layer = isEstimate
-        ? classifyEstimateStatusFromDb(r.status, r.ns_status, r.lost_reason)
-        : 'shipped';
+      let layer;
+      if (isEstimate) {
+        const estStatus = classifyEstimateStatusFromDb(r.status, r.ns_status, r.lost_reason);
+        // Only show open and lost estimates — converted ones are already in shipped sales
+        if (estStatus === 'converted') return null;
+        layer = estStatus; // 'open' or 'lost'
+      } else {
+        // Sales orders: split by whether they had a quote
+        layer = r.had_quote ? 'quoted' : 'direct';
+      }
 
       return {
         id: r.id, tranId: r.tran_id, type: r.tran_type, layer,
@@ -297,6 +304,7 @@ async function getTransactions(repId, reps) {
         vertical: r.vertical, hqCity: r.hq_city, hqState: r.hq_state,
         firstOrder: r.first_order, firstQuote: r.first_quote,
         leadSource: r.lead_source, items: r.items || [],
+        hadQuote: r.had_quote || false,
         // Estimate-specific
         nsStatus: r.ns_status, probability: r.probability,
         daysOpen: r.days_open, contactEmail: r.contact_email,
@@ -304,7 +312,7 @@ async function getTransactions(repId, reps) {
         dateConverted: r.date_converted, lostReason: r.lost_reason,
         reasonForLoss: r.reason_for_loss, status: r.status
       };
-    });
+    }).filter(Boolean);
   }
 
   // JSON fallback — return null to signal server.js should use existing file logic

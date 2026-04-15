@@ -685,8 +685,10 @@ app.get('/api/salesmap-data', ensureAuth, async (req, res) => {
           if (netsuiteRepId && repId_ !== netsuiteRepId) continue;
           const dateStr = row.date || row.trandate;
           if (cutoff && new Date(dateStr) < cutoff) continue;
+          // For JSON fallback, we can't easily determine had_quote without a DB join.
+          // Default to 'quoted' (majority of sales have quotes).
           transactions.push({
-            id: row.id, tranId: row.orderId || row.tranid, type: 'SalesOrd', layer: 'shipped',
+            id: row.id, tranId: row.orderId || row.tranid, type: 'SalesOrd', layer: 'quoted',
             date: dateStr, total: parseFloat(row.total) || 0,
             customerName: row.customerName || row.customer || row.customername,
             memo: row.memo || '', city: row.city || row.shipcity || '',
@@ -714,6 +716,8 @@ app.get('/api/salesmap-data', ensureAuth, async (req, res) => {
           const lostReason = row.lostReason || row.lostreason || '';
           const statusDisplay = row.status || row.statusdisplay || nsStatus || '';
           const layer = classifyEstimateStatus(statusDisplay, lostReason);
+          // Skip converted estimates — they show up as shipped sales already
+          if (layer === 'converted') continue;
           transactions.push({
             id: row.id, tranId: row.quoteId || row.tranid, type: 'Estimate', layer,
             date: dateStr, total: parseFloat(row.total) || 0,
@@ -743,16 +747,21 @@ app.get('/api/salesmap-data', ensureAuth, async (req, res) => {
     });
   }
 
+  const quoted = transactions.filter(t => t.layer === 'quoted');
+  const direct = transactions.filter(t => t.layer === 'direct');
+  const open = transactions.filter(t => t.layer === 'open');
+  const lost = transactions.filter(t => t.layer === 'lost');
+
   const summary = {
     total: transactions.length,
-    shipped: transactions.filter(t => t.layer === 'shipped').length,
-    open: transactions.filter(t => t.layer === 'open').length,
-    converted: transactions.filter(t => t.layer === 'converted').length,
-    lost: transactions.filter(t => t.layer === 'lost').length,
-    totalRevenue: transactions.filter(t => t.layer === 'shipped').reduce((s, t) => s + t.total, 0),
-    totalOpenValue: transactions.filter(t => t.layer === 'open').reduce((s, t) => s + t.total, 0),
-    totalConvertedValue: transactions.filter(t => t.layer === 'converted').reduce((s, t) => s + t.total, 0),
-    totalLostValue: transactions.filter(t => t.layer === 'lost').reduce((s, t) => s + t.total, 0)
+    quoted: quoted.length,
+    direct: direct.length,
+    open: open.length,
+    lost: lost.length,
+    totalQuotedRevenue: quoted.reduce((s, t) => s + t.total, 0),
+    totalDirectRevenue: direct.reduce((s, t) => s + t.total, 0),
+    totalOpenValue: open.reduce((s, t) => s + t.total, 0),
+    totalLostValue: lost.reduce((s, t) => s + t.total, 0)
   };
 
   res.json({ transactions, summary });

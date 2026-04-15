@@ -136,6 +136,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   synced_at TIMESTAMPTZ DEFAULT NOW(),
   lat NUMERIC,
   lng NUMERIC,
+  had_quote BOOLEAN DEFAULT FALSE,
   UNIQUE(tran_id)
 );
 
@@ -371,6 +372,21 @@ async function reclassifyVerticals() {
   // Ensure lat/lng columns exist on transactions (for geocoding)
   await pool.query('ALTER TABLE transactions ADD COLUMN IF NOT EXISTS lat NUMERIC');
   await pool.query('ALTER TABLE transactions ADD COLUMN IF NOT EXISTS lng NUMERIC');
+  // had_quote flag: true if this sales order originated from an estimate
+  await pool.query('ALTER TABLE transactions ADD COLUMN IF NOT EXISTS had_quote BOOLEAN DEFAULT FALSE');
+
+  // Flag sales orders that have a matching converted estimate (same customer)
+  await pool.query(`
+    UPDATE transactions t SET had_quote = TRUE
+    WHERE t.tran_type = 'SalesOrd'
+      AND EXISTS (
+        SELECT 1 FROM transactions e
+        WHERE e.tran_type = 'Estimate'
+          AND e.customer_id = t.customer_id
+          AND e.customer_id != ''
+          AND (e.status ILIKE '%processed%' OR e.ns_status ILIKE '%converted%')
+      )
+  `);
 
   // Sanitize absurd estimated values (parser bugs produced trillions+)
   await pool.query(`

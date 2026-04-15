@@ -6,16 +6,16 @@
 
 // Layer config
 const LAYER_COLORS = {
-  shipped: '#16a34a',
+  quoted: '#16a34a',
+  direct: '#2563eb',
   open: '#ea580c',
-  converted: '#2563eb',
   lost: '#dc2626'
 };
 
 const LAYER_LABELS = {
-  shipped: 'Shipped Sale',
+  quoted: 'Quote → Sale',
+  direct: 'Direct Sale',
   open: 'Open Quote',
-  converted: 'Converted Quote',
   lost: 'Lost Quote'
 };
 
@@ -23,14 +23,14 @@ const LAYER_LABELS = {
 let map;
 let allTransactions = [];
 let geoData = null;
-let markerLayers = { shipped: null, open: null, converted: null, lost: null };
-let activeLayers = { shipped: true, open: true, converted: true, lost: true };
+let markerLayers = { quoted: null, direct: null, open: null, lost: null };
+let activeLayers = { quoted: true, direct: true, open: true, lost: true };
 let activeYears = {};
 let currentListTransactions = [];
 let lastViewedLayer = null;
 
 // Pre-built marker cache: markerCache[layer][year] = [marker, marker, ...]
-let markerCache = { shipped: {}, open: {}, converted: {}, lost: {} };
+let markerCache = { quoted: {}, direct: {}, open: {}, lost: {} };
 
 const US_STATES_GEOJSON = '/data/us-states.json';
 
@@ -593,30 +593,30 @@ function fmtDollars(n) {
 }
 
 function updateStats(filtered) {
-  const shipped = filtered.filter(t => t.layer === 'shipped');
+  const quoted = filtered.filter(t => t.layer === 'quoted');
+  const direct = filtered.filter(t => t.layer === 'direct');
   const open = filtered.filter(t => t.layer === 'open');
-  const converted = filtered.filter(t => t.layer === 'converted');
   const lost = filtered.filter(t => t.layer === 'lost');
 
-  const totalRevenue = shipped.reduce((s, t) => s + t.total, 0);
+  const quotedRevenue = quoted.reduce((s, t) => s + t.total, 0);
+  const directRevenue = direct.reduce((s, t) => s + t.total, 0);
   const openValue = open.reduce((s, t) => s + t.total, 0);
-  const convertedValue = converted.reduce((s, t) => s + t.total, 0);
   const lostValue = lost.reduce((s, t) => s + t.total, 0);
 
   document.getElementById('statTotal').textContent = filtered.length.toLocaleString();
-  document.getElementById('statShipped').textContent = shipped.length.toLocaleString();
+  document.getElementById('statQuoted').textContent = quoted.length.toLocaleString();
+  document.getElementById('statDirect').textContent = direct.length.toLocaleString();
   document.getElementById('statOpen').textContent = open.length.toLocaleString();
-  document.getElementById('statConverted').textContent = converted.length.toLocaleString();
   document.getElementById('statLost').textContent = lost.length.toLocaleString();
 
-  document.getElementById('statRevenue').textContent = fmtDollars(totalRevenue);
+  document.getElementById('statQuotedRevenue').textContent = fmtDollars(quotedRevenue);
+  document.getElementById('statDirectRevenue').textContent = fmtDollars(directRevenue);
   document.getElementById('statOpenValue').textContent = fmtDollars(openValue);
-  document.getElementById('statConvertedValue').textContent = fmtDollars(convertedValue);
   document.getElementById('statLostValue').textContent = fmtDollars(lostValue);
 
-  const totalDecided = converted.length + lost.length;
-  const convRate = totalDecided > 0 ? ((converted.length / totalDecided) * 100).toFixed(1) : '--';
-  document.getElementById('statConvRate').textContent = convRate + '% conv rate';
+  const totalSales = quoted.length + direct.length;
+  const directPct = totalSales > 0 ? ((direct.length / totalSales) * 100).toFixed(1) : '--';
+  document.getElementById('statDirectPct').textContent = directPct + '% direct';
 }
 
 // ── NetSuite Sync ──
