@@ -516,12 +516,13 @@ function showTransactionDetail(txn) {
     html += '<table class="table table-sm table-borderless mb-0" style="font-size:0.78rem;">';
     html += '<thead><tr><th>Item</th><th class="text-end">Qty</th><th class="text-end">Amt</th></tr></thead><tbody>';
     for (const item of txn.items) {
+      const itemLabel = item.itemId || item.partNumber || item.description || item.itemNumber || '?';
       html += `<tr>
-        <td title="${escapeHtml(item.description || '')}">${escapeHtml(item.itemNumber || '?')}</td>
+        <td>${escapeHtml(itemLabel).substring(0, 80)}</td>
         <td class="text-end">${item.qty || ''}</td>
         <td class="text-end">$${Number(item.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
       </tr>`;
-      if (item.description) {
+      if (item.description && item.description !== itemLabel) {
         html += `<tr><td colspan="3" class="text-muted pt-0" style="font-size:0.7rem;">${escapeHtml(item.description).substring(0, 100)}</td></tr>`;
       }
     }

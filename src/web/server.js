@@ -1212,17 +1212,48 @@ async function runNightlyScan() {
 }
 
 function startNightlyScanScheduler() {
-  // Check every 15 minutes if we're in the 2-4am EST window
-  setInterval(() => {
+  // Calculate ms until next 2:00am EST (UTC-5)
+  function msUntilNext2amEST() {
     const now = new Date();
-    // Convert to EST (UTC-5). During EDT (UTC-4), this will run 3-5am EDT — still overnight.
-    const estHour = (now.getUTCHours() - 5 + 24) % 24;
-    if (estHour >= 2 && estHour < 4) {
-      runNightlyScan().catch(e => console.error('[Nightly Scan] Scheduler error:', e.message));
+    const target = new Date(now);
+    // Set target to today at 07:00 UTC (= 2:00am EST)
+    target.setUTCHours(7, 0, 0, 0);
+    // If we're already past 2am EST today, schedule for tomorrow
+    if (target <= now) {
+      target.setUTCDate(target.getUTCDate() + 1);
     }
-  }, 15 * 60 * 1000); // every 15 minutes
+    return target.getTime() - now.getTime();
+  }
 
-  console.log('  Nightly scan scheduled: 2-4am EST daily');
+  function scheduleNext() {
+    const delay = msUntilNext2amEST();
+    const hoursUntil = (delay / 3600000).toFixed(1);
+    console.log(`  Next nightly run in ${hoursUntil}h`);
+
+    setTimeout(async () => {
+      // Run heatmap scan
+      await runNightlyScan().catch(e => console.error('[Nightly] Heatmap scan error:', e.message));
+
+      // Run NetSuite sync
+      if (process.env.NETSUITE_ACCOUNT_ID) {
+        console.log('[Nightly] Starting NetSuite sync...');
+        try {
+          const result = await netsuiteSync.runSync();
+          const totalFetched = result.sales.fetched + result.estimates.fetched;
+          const totalUpserted = result.sales.upserted + result.estimates.upserted;
+          console.log(`[Nightly] NetSuite sync: ${totalFetched} fetched, ${totalUpserted} upserted`);
+        } catch (e) {
+          console.error('[Nightly] NetSuite sync error:', e.message);
+        }
+      }
+
+      // Schedule the next run (tomorrow at 2am EST)
+      scheduleNext();
+    }, delay);
+  }
+
+  scheduleNext();
+  console.log('  Nightly scan + sync scheduled: 2:00am EST daily');
 }
 
 // ── ICP detail ──
