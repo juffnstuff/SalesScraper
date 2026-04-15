@@ -803,10 +803,20 @@ app.get('/api/heatmap-data', ensureAuth, async (req, res) => {
       byState[p.state] = (byState[p.state] || 0) + 1;
     }
 
-    res.json({ projects, summary, byState });
+    // Get last scan time from cache
+    let lastScan = null;
+    try {
+      const cachePath = path.join(__dirname, '../../data/news_cache.json');
+      if (fs.existsSync(cachePath)) {
+        const cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+        lastScan = cache.lastScan || null;
+      }
+    } catch { /* ignore */ }
+
+    res.json({ projects, summary, byState, lastScan });
   } catch (e) {
     console.error('Error loading heatmap data:', e.message);
-    res.json({ projects: [], summary: { total: 0 }, byState: {} });
+    res.json({ projects: [], summary: { total: 0 }, byState: {}, lastScan: null });
   }
 });
 
@@ -1157,33 +1167,32 @@ app.post('/api/heatmap-contractor-batch', ensureAuth, async (req, res) => {
   res.json({ success: true, enriched, total: targets.length });
 });
 
-// ── Background scan on startup (seeds news cache if empty or stale) ──
-async function runStartupScan() {
-  const cachePath = path.join(__dirname, '../../data/news_cache.json');
-  let shouldScan = false;
+// ── Scheduled nightly scan (runs daily between 2-4am EST) ──
+let nightlyScanRunning = false;
 
+async function runNightlyScan() {
+  const cachePath = path.join(__dirname, '../../data/news_cache.json');
+
+  // Check if cache was already scanned in the last 20 hours (prevents double-runs)
   try {
-    if (!fs.existsSync(cachePath)) {
-      shouldScan = true;
-    } else {
+    if (fs.existsSync(cachePath)) {
       const cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
       const lastScan = cache.lastScan ? new Date(cache.lastScan) : null;
-      const hoursSince = lastScan ? (Date.now() - lastScan.getTime()) / 3600000 : Infinity;
-      shouldScan = hoursSince > 24 || (cache.projects || []).length === 0;
+      if (lastScan) {
+        const hoursSince = (Date.now() - lastScan.getTime()) / 3600000;
+        if (hoursSince < 20) {
+          return; // Already scanned recently
+        }
+      }
     }
-  } catch (e) { shouldScan = true; }
+  } catch { /* proceed with scan */ }
 
-  if (!shouldScan) {
-    console.log('  News cache is fresh (scanned < 24h ago). Skipping startup scan.');
-    return;
-  }
+  if (!process.env.ANTHROPIC_API_KEY) return;
+  if (nightlyScanRunning) return;
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    console.log('  No ANTHROPIC_API_KEY — skipping startup news scan.');
-    return;
-  }
+  nightlyScanRunning = true;
+  console.log(`[Nightly Scan] Starting at ${new Date().toISOString()}...`);
 
-  console.log('  Starting background news scan...');
   try {
     const ConstructionNewsExpanded = require('../prospecting/sources/construction_news_expanded');
     const searcher = new ConstructionNewsExpanded();
@@ -1194,10 +1203,26 @@ async function runStartupScan() {
     };
     const results = await searcher.search(scanIcp);
     const { total, newCount } = mergeIntoNewsCache(results);
-    console.log(`  Background scan complete: ${results.length} found, ${newCount} new, ${total} total cached.`);
+    console.log(`[Nightly Scan] Complete: ${results.length} found, ${newCount} new, ${total} total cached.`);
   } catch (e) {
-    console.error('  Background scan failed:', e.message);
+    console.error('[Nightly Scan] Failed:', e.message);
+  } finally {
+    nightlyScanRunning = false;
   }
+}
+
+function startNightlyScanScheduler() {
+  // Check every 15 minutes if we're in the 2-4am EST window
+  setInterval(() => {
+    const now = new Date();
+    // Convert to EST (UTC-5). During EDT (UTC-4), this will run 3-5am EDT — still overnight.
+    const estHour = (now.getUTCHours() - 5 + 24) % 24;
+    if (estHour >= 2 && estHour < 4) {
+      runNightlyScan().catch(e => console.error('[Nightly Scan] Scheduler error:', e.message));
+    }
+  }, 15 * 60 * 1000); // every 15 minutes
+
+  console.log('  Nightly scan scheduled: 2-4am EST daily');
 }
 
 // ── ICP detail ──
@@ -1230,8 +1255,8 @@ app.listen(PORT, async () => {
     console.log('  💾 Database: JSON files (no DATABASE_URL set)\n');
   }
 
-  // Run background news scan if cache is stale
-  runStartupScan().catch(e => console.error('Startup scan error:', e.message));
+  // Schedule nightly heatmap scan (2-4am EST)
+  startNightlyScanScheduler();
 
   // Run background NetSuite incremental sync if DB is available and NetSuite is configured
   if (await db.isReady() && process.env.NETSUITE_ACCOUNT_ID) {

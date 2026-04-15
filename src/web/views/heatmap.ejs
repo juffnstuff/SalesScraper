@@ -42,16 +42,6 @@
   </div>
   <div class="col-md-4 text-end">
     <div class="btn-group">
-      <button class="btn btn-sm btn-outline-danger" id="scanBtn" onclick="scanForNews()">
-        <span class="scan-text"><i class="bi bi-search"></i> Quick Scan</span>
-        <span class="scan-spinner"><span class="spinner-border spinner-border-sm"></span> Scanning...</span>
-      </button>
-      <button class="btn btn-sm btn-outline-danger" id="regionalScanBtn" onclick="scanRegional()">
-        <span class="regional-text"><i class="bi bi-globe-americas"></i> Deep Scan (8 Regions)</span>
-        <span class="regional-spinner"><span class="spinner-border spinner-border-sm"></span> <span id="regionalProgress">Scanning...</span></span>
-      </button>
-    </div>
-    <div class="btn-group ms-2">
       <button class="btn btn-sm btn-outline-success dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
         <i class="bi bi-download"></i> Export
       </button>
@@ -71,7 +61,7 @@
         <li><a class="dropdown-item" href="#" onclick="exportPDF('construction'); return false;">Construction</a></li>
       </ul>
     </div>
-    <small class="text-muted ms-2 d-none d-lg-inline">Deep Scan searches state-by-state for 3-5x more projects</small>
+    <small class="text-muted ms-2 d-none d-lg-inline" id="lastScanInfo"></small>
   </div>
 </div>
 
