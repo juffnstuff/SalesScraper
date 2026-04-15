@@ -1256,6 +1256,51 @@ function startNightlyScanScheduler() {
         }
       }
 
+      // Re-scrape line items with actual part codes from NetSuite
+      if (process.env.NETSUITE_ACCOUNT_ID) {
+        try {
+          const db = require('./db');
+          if (await db.isReady()) {
+            const NetSuiteClient = require('../discovery/netsuite_client');
+            const netsuite = new NetSuiteClient();
+
+            console.log('[Nightly] Fetching line items with part codes...');
+            const salesItems = await netsuite.getLineItemsWithPartCodes('SalesOrd').catch(() => []);
+            const estItems = await netsuite.getLineItemsWithPartCodes('Estimate').catch(() => []);
+            console.log(`[Nightly] Got ${salesItems.length} sales + ${estItems.length} estimate line items`);
+
+            // Group by tranId
+            const allItems = {};
+            for (const item of [...salesItems, ...estItems]) {
+              const tranId = item.tranId || item.tranid;
+              if (!tranId) continue;
+              if (!allItems[tranId]) allItems[tranId] = [];
+              allItems[tranId].push({
+                itemId: item.partNumber || item.partnumber || item.itemId || '',
+                itemNumber: String(item.internalId || item.internalid || ''),
+                itemName: item.itemName || item.itemname || '',
+                description: item.description || item.displayname || item.itemName || '',
+                qty: parseInt(item.qty || item.quantity) || 0,
+                amount: parseFloat(item.amount) || 0,
+                rate: item.rate || ''
+              });
+            }
+
+            let updated = 0;
+            for (const [tranId, items] of Object.entries(allItems)) {
+              const result = await db.query(
+                'UPDATE transactions SET items = $1 WHERE tran_id = $2',
+                [JSON.stringify(items), tranId]
+              );
+              if (result.rowCount > 0) updated++;
+            }
+            console.log(`[Nightly] Updated ${updated} transactions with part codes.`);
+          }
+        } catch (e) {
+          console.error('[Nightly] Item re-scrape error:', e.message);
+        }
+      }
+
       // Geocode un-geocoded transactions (200 per night, ~3.5 min)
       try {
         const db = require('./db');
