@@ -33,6 +33,29 @@ let lastViewedStage = null; // for "Back to list" navigation
 let currentListProjects = []; // current list being displayed in sidebar
 let lastListType = null; // 'cluster' or 'stat' — determines how to rebuild on back
 
+const STATE_CODES = {
+  'alabama':'AL','alaska':'AK','arizona':'AZ','arkansas':'AR','california':'CA',
+  'colorado':'CO','connecticut':'CT','delaware':'DE','district of columbia':'DC',
+  'florida':'FL','georgia':'GA','hawaii':'HI','idaho':'ID','illinois':'IL',
+  'indiana':'IN','iowa':'IA','kansas':'KS','kentucky':'KY','louisiana':'LA',
+  'maine':'ME','maryland':'MD','massachusetts':'MA','michigan':'MI','minnesota':'MN',
+  'mississippi':'MS','missouri':'MO','montana':'MT','nebraska':'NE','nevada':'NV',
+  'new hampshire':'NH','new jersey':'NJ','new mexico':'NM','new york':'NY',
+  'north carolina':'NC','north dakota':'ND','ohio':'OH','oklahoma':'OK','oregon':'OR',
+  'pennsylvania':'PA','rhode island':'RI','south carolina':'SC','south dakota':'SD',
+  'tennessee':'TN','texas':'TX','utah':'UT','vermont':'VT','virginia':'VA',
+  'washington':'WA','west virginia':'WV','wisconsin':'WI','wyoming':'WY'
+};
+
+function normalizeState(state) {
+  if (!state) return '';
+  const s = state.trim();
+  if (s.length === 2) return s.toUpperCase();
+  // Handle "DC/VA" → take first
+  if (s.includes('/')) return normalizeState(s.split('/')[0]);
+  return STATE_CODES[s.toLowerCase()] || s;
+}
+
 const US_STATES_GEOJSON = '/data/us-states.json';
 
 // ── Initialize ──
@@ -216,8 +239,10 @@ function updateMap() {
 function getCoords(city, state) {
   if (!geoData) return null;
 
-  if (city && state) {
-    const key = `${city},${state}`;
+  const st = normalizeState(state);
+
+  if (city && st) {
+    const key = `${city},${st}`;
     if (geoData.cities[key]) return geoData.cities[key];
 
     const keyLower = key.toLowerCase();
@@ -228,12 +253,12 @@ function getCoords(city, state) {
     const cityLower = city.toLowerCase();
     for (const [k, v] of Object.entries(geoData.cities)) {
       const parts = k.split(',');
-      if (parts[1] === state && parts[0].toLowerCase().includes(cityLower)) return v;
+      if (parts[1] === st && parts[0].toLowerCase().includes(cityLower)) return v;
     }
   }
 
-  if (state && geoData.stateCentroids[state]) {
-    return geoData.stateCentroids[state];
+  if (st && geoData.stateCentroids[st]) {
+    return geoData.stateCentroids[st];
   }
 
   return null;
