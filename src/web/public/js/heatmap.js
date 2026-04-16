@@ -31,6 +31,7 @@ let markerLayers = {
 let activeStages = { parking: true, industrial: true, municipal: true, construction: true };
 let lastViewedStage = null; // for "Back to list" navigation
 let currentListProjects = []; // current list being displayed in sidebar
+let lastListType = null; // 'cluster' or 'stat' — determines how to rebuild on back
 
 const US_STATES_GEOJSON = '/data/us-states.json';
 
@@ -95,6 +96,7 @@ function initMap() {
   for (const stage of Object.keys(STAGE_COLORS)) {
     markerLayers[stage] = L.markerClusterGroup({
       maxClusterRadius: 40,
+      zoomToBoundsOnClick: false,
       iconCreateFunction: function(cluster) {
         const count = cluster.getChildCount();
         const color = STAGE_COLORS[stage];
@@ -105,6 +107,21 @@ function initMap() {
         });
       }
     });
+
+    // Cluster click → show list of projects in that cluster
+    markerLayers[stage].on('clusterclick', function(e) {
+      const markers = e.layer.getAllChildMarkers();
+      const projects = markers.map(m => m._project).filter(Boolean);
+      // Dedupe by dbId (same project may have multiple markers for multi-vertical)
+      const seen = new Set();
+      const unique = [];
+      for (const p of projects) {
+        const key = p._dbId || (p.projectName + p.state);
+        if (!seen.has(key)) { seen.add(key); unique.push(p); }
+      }
+      if (unique.length > 0) showClusterList(unique, stage);
+    });
+
     map.addLayer(markerLayers[stage]);
   }
 }
@@ -162,6 +179,7 @@ function updateMap() {
         fillOpacity: 0.85
       });
 
+      marker._project = project;
       marker.on('click', () => showProjectDetail(project));
 
       const label = escapeHtml(project.projectName).substring(0, 50);
@@ -206,9 +224,50 @@ function getCoords(city, state) {
   return null;
 }
 
+// ── Cluster Click → Project List ──
+function showClusterList(projects, stage) {
+  lastViewedStage = stage;
+  lastListType = 'cluster';
+  currentListProjects = projects;
+
+  const label = STAGE_LABELS[stage] || stage;
+  const color = STAGE_COLORS[stage] || '#1e293b';
+  const locations = [...new Set(projects.map(p => [p.city, p.state].filter(Boolean).join(', ')).filter(Boolean))];
+  const locLabel = locations.length === 1 ? locations[0] : `${locations.length} locations`;
+
+  const title = document.getElementById('sidebarTitle');
+  title.innerHTML = `<i class="bi bi-geo-alt-fill" style="color:${color}"></i> ${escapeHtml(locLabel)} &mdash; ${label} (${projects.length})`;
+  document.getElementById('backToListBtn').classList.add('d-none');
+
+  const sidebar = document.getElementById('sidebarContent');
+  let html = '';
+  for (let i = 0; i < projects.length; i++) {
+    const p = projects[i];
+    const value = p.estimatedValue > 0 ? `<span class="text-success fw-bold">$${Number(p.estimatedValue).toLocaleString()}</span>` : '';
+    const location = [p.city, p.state].filter(Boolean).join(', ');
+    const hasContractors = p.contractors && p.contractors.length > 0;
+    const verts = p.verticals && p.verticals.length > 0 ? p.verticals : [p.lifecycleStage || 'construction'];
+    const badges = verts.map(v => `<span class="badge ms-1 flex-shrink-0" style="background:${STAGE_COLORS[v] || '#ea580c'};color:white;font-size:0.55rem;">${v}</span>`).join('');
+
+    html += `<div class="project-list-item" onclick="showProjectDetailByIndex(${i})">
+      <div class="d-flex justify-content-between align-items-start">
+        <strong class="small" style="line-height:1.3;">${escapeHtml(p.projectName).substring(0, 60)}</strong>
+        <span class="flex-shrink-0">${badges}</span>
+      </div>
+      <div class="d-flex justify-content-between align-items-center mt-1">
+        <small class="text-muted"><i class="bi bi-geo-alt"></i> ${escapeHtml(location)}</small>
+        ${value ? `<small>${value}</small>` : ''}
+      </div>
+      ${hasContractors ? '<small class="text-success"><i class="bi bi-people-fill"></i> Contractors found</small>' : ''}
+    </div>`;
+  }
+  sidebar.innerHTML = html;
+}
+
 // ── Project List (clickable stat cards) ──
 function showProjectList(stage) {
   lastViewedStage = stage;
+  lastListType = 'stat';
   const filtered = stage === 'all'
     ? allProjects
     : allProjects.filter(p => {
@@ -264,7 +323,9 @@ function showProjectDetailByIndex(index) {
 }
 
 function backToList() {
-  if (lastViewedStage !== null) {
+  if (lastListType === 'cluster' && currentListProjects.length > 0) {
+    showClusterList(currentListProjects, lastViewedStage);
+  } else if (lastViewedStage !== null) {
     showProjectList(lastViewedStage);
   }
 }

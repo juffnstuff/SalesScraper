@@ -812,13 +812,22 @@ app.get('/api/heatmap-data', ensureAuth, async (req, res) => {
       byState[p.state] = (byState[p.state] || 0) + 1;
     }
 
-    // Get last scan time from cache
+    // Get last scan time (prefer DB scan_metadata, fall back to JSON cache)
     let lastScan = null;
     try {
-      const cachePath = path.join(__dirname, '../../data/news_cache.json');
-      if (fs.existsSync(cachePath)) {
-        const cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
-        lastScan = cache.lastScan || null;
+      const db = require('./db');
+      if (await db.isReady()) {
+        const { rows } = await db.query(
+          "SELECT last_scan FROM scan_metadata WHERE scan_type = 'heatmap' ORDER BY last_scan DESC LIMIT 1"
+        );
+        if (rows.length > 0) lastScan = rows[0].last_scan;
+      }
+      if (!lastScan) {
+        const cachePath = path.join(__dirname, '../../data/news_cache.json');
+        if (fs.existsSync(cachePath)) {
+          const cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+          lastScan = cache.lastScan || null;
+        }
       }
     } catch { /* ignore */ }
 
