@@ -132,8 +132,16 @@ async function loadData() {
     const resp = await fetch(`/api/heatmap-data?days=${days}`);
     const data = await resp.json();
     allProjects = data.projects || [];
-    updateMap();
-    updateStats(data.summary || {});
+
+    // Compute stats from allProjects directly (more reliable than API summary)
+    recalcStats();
+
+    // Try to render map (defensive — don't let marker errors block stats)
+    try {
+      updateMap();
+    } catch (e) {
+      console.error('updateMap failed:', e);
+    }
 
     // Show last scan time
     const infoEl = document.getElementById('lastScanInfo');
@@ -150,17 +158,21 @@ async function loadData() {
 
 function updateMap() {
   for (const stage of Object.keys(markerLayers)) {
-    markerLayers[stage].clearLayers();
+    if (markerLayers[stage]) markerLayers[stage].clearLayers();
   }
 
   for (const project of allProjects) {
     const coords = getCoords(project.city, project.state);
     if (!coords) continue;
 
-    // Place a marker in EVERY vertical this project belongs to
-    const verticals = project.verticals && project.verticals.length > 0
-      ? project.verticals
-      : [project.lifecycleStage || 'construction'];
+    // Normalize verticals — handle array, JSON string, or missing
+    let verticals = project.verticals;
+    if (typeof verticals === 'string') {
+      try { verticals = JSON.parse(verticals); } catch { verticals = [verticals]; }
+    }
+    if (!Array.isArray(verticals) || verticals.length === 0) {
+      verticals = [project.lifecycleStage || 'construction'];
+    }
 
     for (const stage of verticals) {
       if (!markerLayers[stage]) continue;
@@ -224,6 +236,14 @@ function getCoords(city, state) {
   return null;
 }
 
+// Normalize verticals — handles array, JSON string, or missing
+function getVerts(p) {
+  let v = p.verticals;
+  if (typeof v === 'string') { try { v = JSON.parse(v); } catch { v = [v]; } }
+  if (!Array.isArray(v) || v.length === 0) v = [p.lifecycleStage || 'construction'];
+  return v;
+}
+
 // ── Cluster Click → Project List ──
 function showClusterList(projects, stage) {
   lastViewedStage = stage;
@@ -246,7 +266,7 @@ function showClusterList(projects, stage) {
     const value = p.estimatedValue > 0 ? `<span class="text-success fw-bold">$${Number(p.estimatedValue).toLocaleString()}</span>` : '';
     const location = [p.city, p.state].filter(Boolean).join(', ');
     const hasContractors = p.contractors && p.contractors.length > 0;
-    const verts = p.verticals && p.verticals.length > 0 ? p.verticals : [p.lifecycleStage || 'construction'];
+    const verts = getVerts(p);
     const badges = verts.map(v => `<span class="badge ms-1 flex-shrink-0" style="background:${STAGE_COLORS[v] || '#ea580c'};color:white;font-size:0.55rem;">${v}</span>`).join('');
 
     html += `<div class="project-list-item" onclick="showProjectDetailByIndex(${i})">
@@ -271,7 +291,7 @@ function showProjectList(stage) {
   const filtered = stage === 'all'
     ? allProjects
     : allProjects.filter(p => {
-        const verts = p.verticals && p.verticals.length > 0 ? p.verticals : [p.lifecycleStage || 'construction'];
+        const verts = getVerts(p);
         return verts.includes(stage);
       });
 
@@ -298,7 +318,7 @@ function showProjectList(stage) {
     const location = [p.city, p.state].filter(Boolean).join(', ');
     const hasContractors = p.contractors && p.contractors.length > 0;
 
-    const verts = p.verticals && p.verticals.length > 0 ? p.verticals : [p.lifecycleStage || 'construction'];
+    const verts = getVerts(p);
     const badges = verts.map(v => `<span class="badge ms-1 flex-shrink-0" style="background:${STAGE_COLORS[v] || '#ea580c'};color:white;font-size:0.55rem;">${v}</span>`).join('');
 
     html += `<div class="project-list-item" onclick="showProjectDetailByIndex(${i})">
@@ -351,7 +371,7 @@ function showProjectDetail(project) {
 
   // Project name + all vertical badges
   html += `<h6 class="mb-1">${escapeHtml(project.projectName)}</h6>`;
-  const detailVerts = project.verticals && project.verticals.length > 0 ? project.verticals : [stage];
+  const detailVerts = getVerts(project);
   for (const v of detailVerts) {
     const vc = STAGE_COLORS[v] || color;
     html += `<span class="badge me-1" style="background:${vc}; color:white; font-size:0.7rem;">${STAGE_LABELS[v] || v}</span>`;
@@ -562,7 +582,7 @@ function mergeProjects(newProjects) {
 }
 
 function recalcStats() {
-  const hasVert = (p, v) => (p.verticals && p.verticals.length > 0 ? p.verticals : [p.lifecycleStage || 'construction']).includes(v);
+  const hasVert = (p, v) => getVerts(p).includes(v);
   updateStats({
     total: allProjects.length,
     parking: allProjects.filter(p => hasVert(p, 'parking')).length,
