@@ -1200,17 +1200,12 @@ async function runNightlyScan() {
   if (nightlyScanRunning) return;
 
   nightlyScanRunning = true;
-  console.log(`[Nightly Scan] Starting at ${new Date().toISOString()}...`);
+  console.log(`[Nightly Scan] Starting regional deep scan at ${new Date().toISOString()}...`);
 
   try {
     const ConstructionNewsExpanded = require('../prospecting/sources/construction_news_expanded');
     const searcher = new ConstructionNewsExpanded();
-    const scanIcp = {
-      geographies: ['CA','TX','FL','NY','IL','PA','OH','GA','NC','MI','NJ','VA','WA','AZ','MA','TN','IN','MO','MD','WI','CO','MN','SC','AL','LA','KY','OR','OK','CT','UT'],
-      productAffinities: ['Cable Support Towers', 'Trackout Mats', 'Speed Cushions', 'Wheel Stops', 'Sign Bases', 'Rubber Curbs', 'Flexible Bollards', 'Speed Bumps'],
-      triggerKeywords: ['construction', 'traffic calming', 'parking lot', 'data center', 'highway', 'warehouse']
-    };
-    const results = await searcher.search(scanIcp);
+    const results = await searcher.searchByRegion();
     const { total, newCount } = mergeIntoNewsCache(results);
     console.log(`[Nightly Scan] Complete: ${results.length} found, ${newCount} new, ${total} total cached.`);
   } catch (e) {
