@@ -1296,7 +1296,7 @@ function startNightlyScanScheduler() {
         }
       }
 
-      // Geocode un-geocoded transactions (200 per night, ~3.5 min)
+      // Geocode un-geocoded transactions (3200 per night, ~55 min)
       try {
         const db = require('./db');
         if (await db.isReady()) {
@@ -1304,7 +1304,7 @@ function startNightlyScanScheduler() {
           const { rows } = await db.query(`
             SELECT id, street, city, state, zip FROM transactions
             WHERE lat IS NULL AND street IS NOT NULL AND street != ''
-            ORDER BY id LIMIT 200
+            ORDER BY id LIMIT 3200
           `);
           if (rows.length > 0) {
             console.log(`[Nightly] Geocoding ${rows.length} transactions...`);
