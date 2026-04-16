@@ -161,21 +161,17 @@ function updateMap() {
     if (markerLayers[stage]) markerLayers[stage].clearLayers();
   }
 
+  // Collect markers per layer, then batch-add (addLayers is MUCH faster than addLayer in a loop)
+  const markerBatches = { parking: [], industrial: [], municipal: [], construction: [] };
+
   for (const project of allProjects) {
     const coords = getCoords(project.city, project.state);
     if (!coords) continue;
 
-    // Normalize verticals — handle array, JSON string, or missing
-    let verticals = project.verticals;
-    if (typeof verticals === 'string') {
-      try { verticals = JSON.parse(verticals); } catch { verticals = [verticals]; }
-    }
-    if (!Array.isArray(verticals) || verticals.length === 0) {
-      verticals = [project.lifecycleStage || 'construction'];
-    }
+    const verticals = getVerts(project);
 
     for (const stage of verticals) {
-      if (!markerLayers[stage]) continue;
+      if (!markerBatches[stage]) continue;
 
       const color = STAGE_COLORS[stage] || STAGE_COLORS.construction;
       const jitter = () => (Math.random() - 0.5) * 0.02;
@@ -197,7 +193,14 @@ function updateMap() {
       const label = escapeHtml(project.projectName).substring(0, 50);
       marker.bindTooltip(label, { direction: 'top', offset: [0, -8] });
 
-      markerLayers[stage].addLayer(marker);
+      markerBatches[stage].push(marker);
+    }
+  }
+
+  // Batch-add all markers at once per layer
+  for (const stage of Object.keys(markerBatches)) {
+    if (markerLayers[stage] && markerBatches[stage].length > 0) {
+      markerLayers[stage].addLayers(markerBatches[stage]);
     }
   }
 
