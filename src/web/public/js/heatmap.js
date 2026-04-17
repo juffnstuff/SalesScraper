@@ -134,7 +134,7 @@ function initMap() {
     // Cluster click → show list of projects in that cluster
     markerLayers[stage].on('clusterclick', function(e) {
       const markers = e.layer.getAllChildMarkers();
-      const projects = markers.map(m => m._project).filter(Boolean);
+      const projects = markers.map(m => m._projectData).filter(Boolean);
       // Dedupe by dbId (same project may have multiple markers for multi-vertical)
       const seen = new Set();
       const unique = [];
@@ -210,7 +210,7 @@ function updateMap() {
         fillOpacity: 0.85
       });
 
-      marker._project = project;
+      marker._projectData = project;
       marker.on('click', () => showProjectDetail(project));
 
       const label = escapeHtml(project.projectName).substring(0, 50);
