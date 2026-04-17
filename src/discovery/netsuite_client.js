@@ -15,6 +15,27 @@ class NetSuiteClient {
     this.tokenSecret = config.tokenSecret || process.env.NETSUITE_TOKEN_SECRET;
   }
 
+  // SuiteQL does not parameterize user input, so we guard the few values that
+  // get interpolated into query strings. Anything that fails these checks
+  // throws before the query is ever dispatched.
+  static _assertNumericId(value, field) {
+    if (value === null || value === undefined || value === '') {
+      throw new Error(`NetSuiteClient: ${field} is required`);
+    }
+    const s = String(value);
+    if (!/^-?\d+$/.test(s)) {
+      throw new Error(`NetSuiteClient: ${field} must be an integer (got ${JSON.stringify(value)})`);
+    }
+    return s;
+  }
+
+  static _assertIsoDate(value, field) {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      throw new Error(`NetSuiteClient: ${field} must match YYYY-MM-DD (got ${JSON.stringify(value)})`);
+    }
+    return value;
+  }
+
   /**
    * Run a SuiteQL query. In MCP mode this is a passthrough;
    * standalone mode uses the REST API.
@@ -81,16 +102,18 @@ class NetSuiteClient {
    * Get top customer categories by revenue for a sales rep
    */
   async getCustomerCategories(repId) {
+    const rep = NetSuiteClient._assertNumericId(repId, 'repId');
+    const lookback = NetSuiteClient._assertIsoDate(this._lookbackDate(), 'lookback');
     const result = await this.runSuiteQL(`
       SELECT customer.category, SUM(transaction.total) as revenue
       FROM transaction
       JOIN entity AS customer ON transaction.entity = customer.id
-      WHERE transaction.employee = ${repId}
+      WHERE transaction.employee = ${rep}
         AND transaction.type IN ('SalesOrd', 'Invoice')
-        AND transaction.tranDate >= TO_DATE('${this._lookbackDate()}', 'YYYY-MM-DD')
+        AND transaction.tranDate >= TO_DATE('${lookback}', 'YYYY-MM-DD')
       GROUP BY customer.category
       ORDER BY revenue DESC
-    `, `Customer categories for rep ${repId}`);
+    `, `Customer categories for rep ${rep}`);
     return result.items;
   }
 
@@ -98,6 +121,8 @@ class NetSuiteClient {
    * Get top products sold by a rep
    */
   async getTopProducts(repId) {
+    const rep = NetSuiteClient._assertNumericId(repId, 'repId');
+    const lookback = NetSuiteClient._assertIsoDate(this._lookbackDate(), 'lookback');
     const result = await this.runSuiteQL(`
       SELECT transactionLine.item, item.itemId, item.displayName,
              SUM(transactionLine.quantity) as qty,
@@ -105,12 +130,12 @@ class NetSuiteClient {
       FROM transactionLine
       JOIN transaction ON transactionLine.transaction = transaction.id
       JOIN item ON transactionLine.item = item.id
-      WHERE transaction.employee = ${repId}
+      WHERE transaction.employee = ${rep}
         AND transaction.type IN ('SalesOrd', 'Invoice')
-        AND transaction.tranDate >= TO_DATE('${this._lookbackDate()}', 'YYYY-MM-DD')
+        AND transaction.tranDate >= TO_DATE('${lookback}', 'YYYY-MM-DD')
       GROUP BY transactionLine.item, item.itemId, item.displayName
       ORDER BY revenue DESC
-    `, `Top products for rep ${repId}`);
+    `, `Top products for rep ${rep}`);
     return result.items;
   }
 
@@ -118,16 +143,18 @@ class NetSuiteClient {
    * Get top shipping states/geographies for a rep
    */
   async getTopGeographies(repId) {
+    const rep = NetSuiteClient._assertNumericId(repId, 'repId');
+    const lookback = NetSuiteClient._assertIsoDate(this._lookbackDate(), 'lookback');
     const result = await this.runSuiteQL(`
       SELECT transaction.shipState, COUNT(*) as orderCount, SUM(transaction.total) as revenue
       FROM transaction
-      WHERE transaction.employee = ${repId}
+      WHERE transaction.employee = ${rep}
         AND transaction.type IN ('SalesOrd', 'Invoice')
-        AND transaction.tranDate >= TO_DATE('${this._lookbackDate()}', 'YYYY-MM-DD')
+        AND transaction.tranDate >= TO_DATE('${lookback}', 'YYYY-MM-DD')
         AND transaction.shipState IS NOT NULL
       GROUP BY transaction.shipState
       ORDER BY revenue DESC
-    `, `Top geographies for rep ${repId}`);
+    `, `Top geographies for rep ${rep}`);
     return result.items;
   }
 
@@ -135,17 +162,19 @@ class NetSuiteClient {
    * Get deal size statistics for a rep
    */
   async getDealSizeStats(repId) {
+    const rep = NetSuiteClient._assertNumericId(repId, 'repId');
+    const lookback = NetSuiteClient._assertIsoDate(this._lookbackDate(), 'lookback');
     const result = await this.runSuiteQL(`
       SELECT AVG(transaction.total) as avgDeal,
              MAX(transaction.total) as maxDeal,
              MIN(transaction.total) as minDeal,
              COUNT(*) as dealCount
       FROM transaction
-      WHERE transaction.employee = ${repId}
+      WHERE transaction.employee = ${rep}
         AND transaction.type IN ('SalesOrd', 'Invoice')
-        AND transaction.tranDate >= TO_DATE('${this._lookbackDate()}', 'YYYY-MM-DD')
+        AND transaction.tranDate >= TO_DATE('${lookback}', 'YYYY-MM-DD')
         AND transaction.total > 0
-    `, `Deal size stats for rep ${repId}`);
+    `, `Deal size stats for rep ${rep}`);
     return result.items;
   }
 
@@ -153,15 +182,17 @@ class NetSuiteClient {
    * Get lost quotes (closed estimates with no linked SO)
    */
   async getLostQuotes(repId) {
+    const rep = NetSuiteClient._assertNumericId(repId, 'repId');
+    const lookback = NetSuiteClient._assertIsoDate(this._lookbackDate(), 'lookback');
     const result = await this.runSuiteQL(`
       SELECT transaction.memo, transaction.total, entity.entityId as companyName
       FROM transaction
       JOIN entity ON transaction.entity = entity.id
-      WHERE transaction.employee = ${repId}
+      WHERE transaction.employee = ${rep}
         AND transaction.type = 'Estimate'
-        AND transaction.tranDate >= TO_DATE('${this._lookbackDate()}', 'YYYY-MM-DD')
+        AND transaction.tranDate >= TO_DATE('${lookback}', 'YYYY-MM-DD')
       ORDER BY transaction.total DESC
-    `, `Lost quotes for rep ${repId}`);
+    `, `Lost quotes for rep ${rep}`);
     return result.items;
   }
 
@@ -170,8 +201,10 @@ class NetSuiteClient {
    * @param {Object} options - { repId (optional NetSuite employee ID), days (lookback days, default 730) }
    */
   async getSalesMapSales(options = {}) {
-    const lookback = this._lookbackDateFromDays(options.days || 730);
-    const repFilter = options.repId ? `AND transaction.employee = ${options.repId}` : '';
+    const lookback = NetSuiteClient._assertIsoDate(this._lookbackDateFromDays(options.days || 730), 'lookback');
+    const repFilter = options.repId
+      ? `AND transaction.employee = ${NetSuiteClient._assertNumericId(options.repId, 'repId')}`
+      : '';
 
     return this.runSuiteQLPaginated(`
       SELECT transaction.id, transaction.tranId, transaction.tranDate,
@@ -197,8 +230,10 @@ class NetSuiteClient {
    * @param {Object} options - { repId (optional NetSuite employee ID), days (lookback days, default 730) }
    */
   async getSalesMapEstimates(options = {}) {
-    const lookback = this._lookbackDateFromDays(options.days || 730);
-    const repFilter = options.repId ? `AND transaction.employee = ${options.repId}` : '';
+    const lookback = NetSuiteClient._assertIsoDate(this._lookbackDateFromDays(options.days || 730), 'lookback');
+    const repFilter = options.repId
+      ? `AND transaction.employee = ${NetSuiteClient._assertNumericId(options.repId, 'repId')}`
+      : '';
 
     return this.runSuiteQLPaginated(`
       SELECT transaction.id, transaction.tranId, transaction.tranDate,
@@ -226,6 +261,7 @@ class NetSuiteClient {
    * @param {string} sinceDate - ISO date string (YYYY-MM-DD)
    */
   async getSalesModifiedSince(sinceDate) {
+    const since = NetSuiteClient._assertIsoDate(sinceDate, 'sinceDate');
     return this.runSuiteQLPaginated(`
       SELECT transaction.id, transaction.tranId, transaction.tranDate,
              transaction.total, transaction.memo, transaction.employee,
@@ -240,9 +276,9 @@ class NetSuiteClient {
         LEFT JOIN transactionShippingAddress
           ON transaction.shippingAddress = transactionShippingAddress.nkey
       WHERE transaction.type IN ('SalesOrd', 'Invoice')
-        AND transaction.lastModifiedDate >= TO_DATE('${sinceDate}', 'YYYY-MM-DD')
+        AND transaction.lastModifiedDate >= TO_DATE('${since}', 'YYYY-MM-DD')
       ORDER BY transaction.lastModifiedDate DESC
-    `, 'Incremental sync: sales modified since ' + sinceDate);
+    `, 'Incremental sync: sales modified since ' + since);
   }
 
   /**
@@ -251,6 +287,7 @@ class NetSuiteClient {
    * @param {string} sinceDate - ISO date string (YYYY-MM-DD)
    */
   async getEstimatesModifiedSince(sinceDate) {
+    const since = NetSuiteClient._assertIsoDate(sinceDate, 'sinceDate');
     return this.runSuiteQLPaginated(`
       SELECT transaction.id, transaction.tranId, transaction.tranDate,
              transaction.total, transaction.memo, transaction.employee,
@@ -265,9 +302,9 @@ class NetSuiteClient {
         LEFT JOIN transactionShippingAddress
           ON transaction.shippingAddress = transactionShippingAddress.nkey
       WHERE transaction.type = 'Estimate'
-        AND transaction.lastModifiedDate >= TO_DATE('${sinceDate}', 'YYYY-MM-DD')
+        AND transaction.lastModifiedDate >= TO_DATE('${since}', 'YYYY-MM-DD')
       ORDER BY transaction.lastModifiedDate DESC
-    `, 'Incremental sync: estimates modified since ' + sinceDate);
+    `, 'Incremental sync: estimates modified since ' + since);
   }
 
   /**
@@ -291,7 +328,7 @@ class NetSuiteClient {
    * @param {number} days - lookback days (default 730)
    */
   async getLineItemsWithPartCodes(tranType, days = 730) {
-    const lookback = this._lookbackDateFromDays(days);
+    const lookback = NetSuiteClient._assertIsoDate(this._lookbackDateFromDays(days), 'lookback');
     const typeFilter = tranType === 'Estimate' ? "= 'Estimate'" : "IN ('SalesOrd', 'Invoice')";
 
     return this.runSuiteQLPaginated(`

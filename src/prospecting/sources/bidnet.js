@@ -83,13 +83,24 @@ class BidAggregatorSearcher {
         let data = '';
         res.on('data', chunk => data += chunk);
         res.on('end', () => {
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            console.warn(`  ${source.name || 'BidNet'} HTTP ${res.statusCode} for "${searchTerm}"`);
+            return resolve([]);
+          }
           const results = this._parseResults(data, source, searchTerm, icp);
           resolve(results);
         });
       });
 
-      req.on('error', () => resolve([]));
-      req.on('timeout', () => { req.destroy(); resolve([]); });
+      req.on('error', (err) => {
+        console.warn(`  ${source.name || 'BidNet'} network error for "${searchTerm}": ${err.message}`);
+        resolve([]);
+      });
+      req.on('timeout', () => {
+        console.warn(`  ${source.name || 'BidNet'} timeout for "${searchTerm}"`);
+        req.destroy();
+        resolve([]);
+      });
       req.end();
     });
   }

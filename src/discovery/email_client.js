@@ -42,13 +42,20 @@ class EmailClient {
         let data = '';
         res.on('data', chunk => data += chunk);
         res.on('end', () => {
-          try {
-            const parsed = JSON.parse(data);
-            this.accessToken = parsed.access_token;
-            resolve(this.accessToken);
-          } catch (e) {
-            reject(new Error(`Auth failed: ${e.message}`));
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            return reject(new Error(`Auth failed: HTTP ${res.statusCode} ${data.slice(0, 200)}`));
           }
+          let parsed;
+          try {
+            parsed = JSON.parse(data);
+          } catch (e) {
+            return reject(new Error(`Auth failed: invalid JSON response (${e.message})`));
+          }
+          if (!parsed.access_token) {
+            return reject(new Error(`Auth failed: no access_token in response`));
+          }
+          this.accessToken = parsed.access_token;
+          resolve(this.accessToken);
         });
       });
 
@@ -180,6 +187,9 @@ class EmailClient {
         let data = '';
         res.on('data', chunk => data += chunk);
         res.on('end', () => {
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            return reject(new Error(`Graph API ${endpoint}: HTTP ${res.statusCode} ${data.slice(0, 200)}`));
+          }
           try {
             resolve(JSON.parse(data));
           } catch (e) {

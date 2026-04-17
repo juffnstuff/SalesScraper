@@ -119,8 +119,19 @@ Return a JSON ICP object with these fields:
     });
 
     try {
-      const text = message.content[0].text;
-      return JSON.parse(text);
+      const block = (message.content || []).find(b => b && b.type === 'text');
+      if (!block || typeof block.text !== 'string') {
+        throw new Error('no text block in Claude response');
+      }
+      let text = block.text.trim();
+      if (text.startsWith('```')) {
+        text = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
+      }
+      const parsed = JSON.parse(text);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('ICP response was not a JSON object');
+      }
+      return parsed;
     } catch (e) {
       console.error(`  Failed to parse ICP response: ${e.message}`);
       return this._fallbackICP(rep);

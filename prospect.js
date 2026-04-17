@@ -25,6 +25,23 @@ const Reporter = require('./src/ui/reporter');
 
 const REP_PROFILES_PATH = path.join(__dirname, 'config/rep_profiles.json');
 
+// Warn early when credentials the pipeline relies on are missing — easier to
+// diagnose than the auth/API errors that surface deep in the run otherwise.
+function warnMissingEnv() {
+  const required = {
+    ANTHROPIC_API_KEY: 'ICP synthesis + Claude scoring',
+    HUBSPOT_ACCESS_TOKEN: 'HubSpot push (unless --dry-run)',
+    NETSUITE_ACCOUNT_ID: 'NetSuite SuiteQL queries'
+  };
+  const missing = Object.entries(required).filter(([k]) => !process.env[k]);
+  if (missing.length > 0) {
+    const chalk = require('chalk');
+    console.warn(chalk.yellow(`\n  ⚠  Missing env vars (features will degrade):`));
+    for (const [k, why] of missing) console.warn(chalk.yellow(`      - ${k}: ${why}`));
+    console.warn('');
+  }
+}
+
 program
   .name('prospect')
   .description('RubberForm AI-Powered Sales Prospecting Engine')
@@ -66,6 +83,8 @@ async function main() {
 
   // Force dry-run if DRY_RUN env is set
   const dryRun = opts.dryRun || process.env.DRY_RUN === 'true';
+
+  warnMissingEnv();
 
   // Initialize engines
   const icpEngine = new ICPEngine();

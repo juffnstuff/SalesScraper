@@ -60,17 +60,28 @@ class SamGovSearcher {
         let data = '';
         res.on('data', chunk => data += chunk);
         res.on('end', () => {
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            console.warn(`  SAM.gov HTTP ${res.statusCode} for "${keyword}"`);
+            return resolve([]);
+          }
           try {
             const parsed = JSON.parse(data);
             const opps = parsed.opportunitiesData || [];
             resolve(opps.map(opp => this._normalizeResult(opp, states)));
           } catch (e) {
-            resolve([]); // Graceful failure
+            console.warn(`  SAM.gov parse error for "${keyword}": ${e.message}`);
+            resolve([]);
           }
         });
       });
 
-      req.on('error', () => resolve([]));
+      req.on('error', (err) => {
+        console.warn(`  SAM.gov network error for "${keyword}": ${err.message}`);
+        resolve([]);
+      });
+      req.setTimeout(15000, () => {
+        req.destroy(new Error('SAM.gov request timed out after 15s'));
+      });
       req.end();
     });
   }
