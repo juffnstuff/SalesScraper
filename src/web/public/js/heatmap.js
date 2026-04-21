@@ -30,7 +30,10 @@ let markerLayers = {
 };
 let activeStages = { parking: true, industrial: true, municipal: true, construction: true };
 let lastViewedStage = null; // for "Back to list" navigation
-let currentListProjects = []; // current list being displayed in sidebar
+let currentListProjects = []; // unfiltered list backing the sidebar
+let visibleListProjects = []; // filtered view actually rendered (click indices map into this)
+let currentListLocLabel = ''; // cluster's location label, only used for cluster lists
+let sidebarFilter = ''; // current sidebar search term
 let lastListType = null; // 'cluster' or 'stat' — determines how to rebuild on back
 
 const STATE_CODES = {
@@ -75,6 +78,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     btn.addEventListener('click', () => toggleStage(btn));
   });
   document.getElementById('timeRange').addEventListener('change', () => loadData());
+
+  const searchInput = document.getElementById('sidebarSearch');
+  if (searchInput) {
+    searchInput.addEventListener('input', () => {
+      sidebarFilter = searchInput.value;
+      renderSidebarList();
+    });
+  }
 });
 
 function initMap() {
@@ -278,74 +289,88 @@ function showClusterList(projects, stage) {
   lastListType = 'cluster';
   currentListProjects = projects;
 
-  const label = STAGE_LABELS[stage] || stage;
-  const color = STAGE_COLORS[stage] || '#1e293b';
   const locations = [...new Set(projects.map(p => [p.city, p.state].filter(Boolean).join(', ')).filter(Boolean))];
-  const locLabel = locations.length === 1 ? locations[0] : `${locations.length} locations`;
+  currentListLocLabel = locations.length === 1 ? locations[0] : `${locations.length} locations`;
 
-  const title = document.getElementById('sidebarTitle');
-  title.innerHTML = `<i class="bi bi-geo-alt-fill" style="color:${color}"></i> ${escapeHtml(locLabel)} &mdash; ${label} (${projects.length})`;
-  document.getElementById('backToListBtn').classList.add('d-none');
-
-  const sidebar = document.getElementById('sidebarContent');
-  let html = '';
-  for (let i = 0; i < projects.length; i++) {
-    const p = projects[i];
-    const value = p.estimatedValue > 0 ? `<span class="text-success fw-bold">$${Number(p.estimatedValue).toLocaleString()}</span>` : '';
-    const location = [p.city, p.state].filter(Boolean).join(', ');
-    const hasContractors = p.contractors && p.contractors.length > 0;
-    const verts = getVerts(p);
-    const badges = verts.map(v => `<span class="badge ms-1 flex-shrink-0" style="background:${STAGE_COLORS[v] || '#ea580c'};color:white;font-size:0.55rem;">${v}</span>`).join('');
-
-    html += `<div class="project-list-item" onclick="showProjectDetailByIndex(${i})">
-      <div class="d-flex justify-content-between align-items-start">
-        <strong class="small" style="line-height:1.3;">${escapeHtml(p.projectName).substring(0, 60)}</strong>
-        <span class="flex-shrink-0">${badges}</span>
-      </div>
-      <div class="d-flex justify-content-between align-items-center mt-1">
-        <small class="text-muted"><i class="bi bi-geo-alt"></i> ${escapeHtml(location)}</small>
-        ${value ? `<small>${value}</small>` : ''}
-      </div>
-      ${hasContractors ? '<small class="text-success"><i class="bi bi-people-fill"></i> Contractors found</small>' : ''}
-    </div>`;
-  }
-  sidebar.innerHTML = html;
+  resetSidebarFilter();
+  renderSidebarList();
 }
 
 // ── Project List (clickable stat cards) ──
 function showProjectList(stage) {
   lastViewedStage = stage;
   lastListType = 'stat';
-  const filtered = stage === 'all'
+  currentListProjects = stage === 'all'
     ? allProjects
-    : allProjects.filter(p => {
-        const verts = getVerts(p);
-        return verts.includes(stage);
-      });
+    : allProjects.filter(p => getVerts(p).includes(stage));
+  currentListLocLabel = '';
 
-  currentListProjects = filtered;
-  const label = stage === 'all' ? 'All Projects' : STAGE_LABELS[stage] || stage;
-  const color = STAGE_COLORS[stage] || '#1e293b';
+  resetSidebarFilter();
+  renderSidebarList();
+}
 
+// Fields scanned by the sidebar search — AI-extracted title + summary blurb
+// plus the other fields the user can see on each card.
+function projectMatchesFilter(p, needle) {
+  if (!needle) return true;
+  const hay = [
+    p.projectName, p.projectType, p.notes,
+    p.owner, p.generalContractor,
+    p.city, p.state, p.source,
+    ...(getVerts(p) || []),
+    ...((p.contractors || []).flatMap(c => [c.name, c.role, c.specialty]))
+  ].filter(Boolean).join(' ').toLowerCase();
+  return hay.includes(needle);
+}
+
+function renderSidebarList() {
+  if (!lastListType) return; // nothing picked yet
+
+  const needle = (sidebarFilter || '').trim().toLowerCase();
+  visibleListProjects = needle
+    ? currentListProjects.filter(p => projectMatchesFilter(p, needle))
+    : currentListProjects.slice();
+
+  // Header
   const title = document.getElementById('sidebarTitle');
-  title.innerHTML = `<i class="bi bi-list-ul" style="color:${color}"></i> ${label} (${filtered.length})`;
+  const stage = lastViewedStage;
+  const color = STAGE_COLORS[stage] || '#1e293b';
+  const totalCount = currentListProjects.length;
+  const shownCount = visibleListProjects.length;
+  const countLabel = needle ? `${shownCount}/${totalCount}` : `${totalCount}`;
+
+  if (lastListType === 'cluster') {
+    const label = STAGE_LABELS[stage] || stage;
+    title.innerHTML = `<i class="bi bi-geo-alt-fill" style="color:${color}"></i> ${escapeHtml(currentListLocLabel)} &mdash; ${label} (${countLabel})`;
+  } else {
+    const label = stage === 'all' ? 'All Projects' : (STAGE_LABELS[stage] || stage);
+    title.innerHTML = `<i class="bi bi-list-ul" style="color:${color}"></i> ${label} (${countLabel})`;
+  }
+
   document.getElementById('backToListBtn').classList.add('d-none');
+  setSidebarSearchVisible(true);
+
+  // Match-count hint (only while filtering)
+  const hint = document.getElementById('sidebarSearchCount');
+  if (hint) hint.textContent = needle ? `${shownCount} match${shownCount === 1 ? '' : 'es'} of ${totalCount}` : '';
 
   const sidebar = document.getElementById('sidebarContent');
 
-  if (filtered.length === 0) {
+  if (totalCount === 0) {
     sidebar.innerHTML = '<div class="text-center text-muted py-4"><p>No projects in this category.</p></div>';
+    return;
+  }
+  if (shownCount === 0) {
+    sidebar.innerHTML = `<div class="text-center text-muted py-4"><p>No projects match &ldquo;${escapeHtml(sidebarFilter)}&rdquo;.</p></div>`;
     return;
   }
 
   let html = '';
-  for (let i = 0; i < filtered.length; i++) {
-    const p = filtered[i];
-    const stColor = STAGE_COLORS[p.lifecycleStage] || '#ea580c';
+  for (let i = 0; i < visibleListProjects.length; i++) {
+    const p = visibleListProjects[i];
     const value = p.estimatedValue > 0 ? `<span class="text-success fw-bold">$${Number(p.estimatedValue).toLocaleString()}</span>` : '';
     const location = [p.city, p.state].filter(Boolean).join(', ');
     const hasContractors = p.contractors && p.contractors.length > 0;
-
     const verts = getVerts(p);
     const badges = verts.map(v => `<span class="badge ms-1 flex-shrink-0" style="background:${STAGE_COLORS[v] || '#ea580c'};color:white;font-size:0.55rem;">${v}</span>`).join('');
 
@@ -361,18 +386,33 @@ function showProjectList(stage) {
       ${hasContractors ? '<small class="text-success"><i class="bi bi-people-fill"></i> Contractors found</small>' : ''}
     </div>`;
   }
-
   sidebar.innerHTML = html;
 }
 
+function resetSidebarFilter() {
+  sidebarFilter = '';
+  const input = document.getElementById('sidebarSearch');
+  if (input) input.value = '';
+  const hint = document.getElementById('sidebarSearchCount');
+  if (hint) hint.textContent = '';
+}
+
+function setSidebarSearchVisible(visible) {
+  const wrap = document.getElementById('sidebarSearchWrap');
+  if (!wrap) return;
+  wrap.classList.toggle('d-none', !visible);
+}
+
 function showProjectDetailByIndex(index) {
-  const project = currentListProjects[index];
+  const project = visibleListProjects[index];
   if (project) showProjectDetail(project);
 }
 
 function backToList() {
-  if (lastListType === 'cluster' && currentListProjects.length > 0) {
-    showClusterList(currentListProjects, lastViewedStage);
+  // Re-render the existing list (preserves any active filter) rather than
+  // rebuilding — so the user's search survives a detail-view round-trip.
+  if (lastListType && currentListProjects.length > 0) {
+    renderSidebarList();
   } else if (lastViewedStage !== null) {
     showProjectList(lastViewedStage);
   }
@@ -394,6 +434,7 @@ function showProjectDetail(project) {
   } else {
     backBtn.classList.add('d-none');
   }
+  setSidebarSearchVisible(false);
 
   let html = '<div class="p-3">';
 
