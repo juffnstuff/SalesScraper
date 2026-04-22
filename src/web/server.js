@@ -1244,8 +1244,16 @@ function startNightlyScanScheduler() {
     console.log(`  Next nightly run in ${hoursUntil}h`);
 
     setTimeout(async () => {
-      // Run heatmap scan
-      await runNightlyScan().catch(e => console.error('[Nightly] Heatmap scan error:', e.message));
+      // Claude web_search is the only expensive part of this job (~$10/day
+      // when run nightly). Scope it to Wednesdays only — every other night we
+      // still run the free internal jobs below (NetSuite sync, part-code
+      // re-scrape, geocoding) so the sales map stays fresh daily.
+      const isWednesday = new Date().getUTCDay() === 3; // 2am EST = 07:00 UTC; UTC day matches EST day at that hour
+      if (isWednesday) {
+        await runNightlyScan().catch(e => console.error('[Weekly] Heatmap scan error:', e.message));
+      } else {
+        console.log('[Nightly] Skipping Claude heatmap scan (runs weekly on Wednesdays)');
+      }
 
       // Run NetSuite sync
       if (process.env.NETSUITE_ACCOUNT_ID) {
@@ -1341,7 +1349,7 @@ function startNightlyScanScheduler() {
   }
 
   scheduleNext();
-  console.log('  Nightly scan + sync scheduled: 2:00am EST daily');
+  console.log('  Nightly NetSuite sync + geocoding at 2:00am EST; Claude heatmap scan weekly on Wednesdays');
 }
 
 // ── ICP detail ──
