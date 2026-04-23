@@ -53,6 +53,13 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE INDEX IF NOT EXISTS idx_projects_state ON projects(state);
 CREATE INDEX IF NOT EXISTS idx_projects_lifecycle ON projects(lifecycle_stage);
 CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(project_status);
+
+-- Ensure article_published_at exists on pre-existing DBs before the partial
+-- index below references it; CREATE TABLE IF NOT EXISTS above is a no-op on
+-- already-provisioned tables, so without this ALTER the index creation fails
+-- on production during the migrate --tables step.
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS article_published_at DATE;
+
 CREATE INDEX IF NOT EXISTS idx_projects_article_pub
   ON projects(COALESCE(article_published_at, (scanned_at AT TIME ZONE 'UTC')::date));
 
