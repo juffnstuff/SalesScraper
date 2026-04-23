@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS projects (
   verticals JSONB DEFAULT '["construction"]',
   project_status TEXT DEFAULT 'Unknown',
   notes TEXT DEFAULT '',
+  article_published_at DATE,
   scanned_at TIMESTAMPTZ DEFAULT NOW(),
   contractor_searched BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -52,6 +53,8 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE INDEX IF NOT EXISTS idx_projects_state ON projects(state);
 CREATE INDEX IF NOT EXISTS idx_projects_lifecycle ON projects(lifecycle_stage);
 CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(project_status);
+CREATE INDEX IF NOT EXISTS idx_projects_article_pub
+  ON projects(COALESCE(article_published_at, (scanned_at AT TIME ZONE 'UTC')::date));
 
 -- Contractors (linked to projects)
 CREATE TABLE IF NOT EXISTS contractors (
@@ -211,8 +214,8 @@ async function seedProjects() {
       const primaryStage = p.lifecycleStage || verticals[0] || 'construction';
 
       const result = await pool.query(`
-        INSERT INTO projects (project_name, project_type, city, state, estimated_value, bid_date, owner, general_contractor, source_url, source, relevance_score, lifecycle_stage, verticals, notes, scanned_at, contractor_searched)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+        INSERT INTO projects (project_name, project_type, city, state, estimated_value, bid_date, owner, general_contractor, source_url, source, relevance_score, lifecycle_stage, verticals, notes, scanned_at, contractor_searched, article_published_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
         ON CONFLICT (project_name, state) DO NOTHING
         RETURNING id
       `, [
@@ -220,7 +223,8 @@ async function seedProjects() {
         p.estimatedValue || 0, p.bidDate || '', p.owner || '', p.generalContractor || '',
         p.sourceUrl || '', p.source || 'construction_news_expanded', p.relevanceScore || 0,
         primaryStage, JSON.stringify(verticals), (p.notes || '').substring(0, 500),
-        p.scannedAt || new Date().toISOString(), p.contractorSearched || false
+        p.scannedAt || new Date().toISOString(), p.contractorSearched || false,
+        p.articlePublishedAt || null
       ]);
 
       if (result.rows.length > 0 && p.contractors && p.contractors.length > 0) {
@@ -367,6 +371,11 @@ async function reclassifyVerticals() {
   // Ensure the verticals column exists (for DBs created before this update)
   await pool.query(`
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS verticals JSONB DEFAULT '["construction"]'
+  `);
+  // Article publish date (captured during the weekly Claude scan; nullable for
+  // pre-feature rows, which fall back to scanned_at via COALESCE in queries).
+  await pool.query(`
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS article_published_at DATE
   `);
 
   // Ensure lat/lng columns exist on transactions (for geocoding)
