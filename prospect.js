@@ -13,6 +13,15 @@
 
 require('dotenv').config();
 
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason instanceof Error ? reason.stack : reason);
+  process.exit(1);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err.stack || err);
+  process.exit(1);
+});
+
 const { program } = require('commander');
 const fs = require('fs');
 const path = require('path');

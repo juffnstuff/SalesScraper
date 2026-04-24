@@ -5,6 +5,17 @@
 
 require('dotenv').config();
 
+// Long-running server: log and keep running on unhandledRejection so a single
+// stray rejection doesn't take down the whole service. Still exit on
+// uncaughtException — process state is undefined after a sync throw escapes.
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason instanceof Error ? reason.stack : reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err.stack || err);
+  process.exit(1);
+});
+
 const express = require('express');
 const session = require('express-session');
 const passport = require('passport');
