@@ -6,6 +6,12 @@
 
 const https = require('https');
 const crypto = require('crypto');
+const { retry, parseRetryAfter } = require('../util/retry');
+
+// Requests that exceed this without completing get aborted and surfaced as
+// ETIMEDOUT (retryable). 30s is well beyond a healthy SuiteQL round-trip but
+// short enough that a hung socket doesn't block a worker indefinitely.
+const REQUEST_TIMEOUT_MS = 30000;
 
 class NetSuiteClient {
   constructor(config = {}) {
@@ -40,17 +46,31 @@ class NetSuiteClient {
   /**
    * Run a SuiteQL query. In MCP mode this is a passthrough;
    * standalone mode uses the REST API with OAuth 1.0 TBA auth.
+   *
+   * Transient failures (network, 5xx, 429, timeout) are retried with
+   * exponential backoff. Each attempt rebuilds the OAuth signature because
+   * the nonce and timestamp must be fresh — NetSuite rejects replays.
    */
   async runSuiteQL(query, description = '', limit = 1000, offset = 0) {
     // NetSuite hostname convention: lowercase, underscore → dash.
     // e.g. "1234567_SB1" → "1234567-sb1.suitetalk.api.netsuite.com".
     const hostAccount = String(this.accountId || '').toLowerCase().replace(/_/g, '-');
     const url = `https://${hostAccount}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql?limit=${limit}&offset=${offset}`;
+    const body = JSON.stringify({ q: query });
 
+    return retry(() => this._runSuiteQLOnce(url, body, description), {
+      maxAttempts: 5,
+      baseDelayMs: 1000,
+      maxDelayMs: 30000,
+      label: `NetSuite SuiteQL: ${description || 'unnamed'}`,
+    });
+  }
+
+  _runSuiteQLOnce(url, body, description) {
     return new Promise((resolve, reject) => {
-      const body = JSON.stringify({ q: query });
       const options = {
         method: 'POST',
+        timeout: REQUEST_TIMEOUT_MS,
         headers: {
           'Content-Type': 'application/json',
           'Prefer': 'transient',
@@ -65,9 +85,12 @@ class NetSuiteClient {
           // Reject non-2xx loudly — previously errors silently returned [] via
           // `parsed.items || []`, which hid broken OAuth signatures for months.
           if (res.statusCode < 200 || res.statusCode >= 300) {
-            return reject(new Error(
+            const err = new Error(
               `NetSuite SuiteQL ${res.statusCode} for "${description}": ${data.slice(0, 500)}`
-            ));
+            );
+            err.statusCode = res.statusCode;
+            err.retryAfterMs = parseRetryAfter(res.headers['retry-after']);
+            return reject(err);
           }
           let parsed;
           try {
@@ -84,6 +107,11 @@ class NetSuiteClient {
       });
 
       req.on('error', reject);
+      req.on('timeout', () => {
+        const err = new Error(`NetSuite SuiteQL timed out after ${REQUEST_TIMEOUT_MS}ms for "${description}"`);
+        err.code = 'ETIMEDOUT';
+        req.destroy(err);
+      });
       req.write(body);
       req.end();
     });
