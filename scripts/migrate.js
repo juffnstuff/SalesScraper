@@ -188,6 +188,27 @@ CREATE TABLE IF NOT EXISTS transaction_sync (
   status TEXT DEFAULT 'success',
   error_message TEXT DEFAULT ''
 );
+
+-- Inventory (current-state snapshot of each item from NetSuite; one location only).
+-- Upserted twice daily alongside the sales/estimate sync. Other services read
+-- this directly — treat it as the source of truth for on-hand / available.
+CREATE TABLE IF NOT EXISTS inventory (
+  item_id TEXT PRIMARY KEY,
+  sku TEXT DEFAULT '',
+  name TEXT DEFAULT '',
+  quantity_on_hand NUMERIC DEFAULT 0,
+  quantity_available NUMERIC DEFAULT 0,
+  quantity_committed NUMERIC DEFAULT 0,
+  quantity_on_order NUMERIC DEFAULT 0,
+  quantity_back_ordered NUMERIC DEFAULT 0,
+  average_cost NUMERIC,
+  reorder_point NUMERIC,
+  is_inactive BOOLEAN DEFAULT FALSE,
+  last_synced_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_inventory_sku ON inventory(sku);
+CREATE INDEX IF NOT EXISTS idx_inventory_active ON inventory(is_inactive) WHERE is_inactive = FALSE;
 `;
 
 const DROP_TABLES = `
@@ -195,6 +216,7 @@ DROP TABLE IF EXISTS contacts CASCADE;
 DROP TABLE IF EXISTS contractors CASCADE;
 DROP TABLE IF EXISTS projects CASCADE;
 DROP TABLE IF EXISTS transactions CASCADE;
+DROP TABLE IF EXISTS inventory CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 DROP TABLE IF EXISTS scan_metadata CASCADE;
 DROP TABLE IF EXISTS transaction_sync CASCADE;

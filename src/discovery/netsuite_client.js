@@ -327,6 +327,35 @@ class NetSuiteClient {
    * @param {string} tranType - 'SalesOrd' or 'Estimate'
    * @param {number} days - lookback days (default 730)
    */
+  /**
+   * Pull current-state inventory for every inventoried item (single-location
+   * setup — these aggregate fields on the `item` record already reflect
+   * company-wide totals). Returns one row per item with on-hand / available /
+   * committed / cost, for the other services that read the database.
+   *
+   * Filtering by `quantityOnHand IS NOT NULL` scopes to items where NetSuite
+   * actually tracks inventory; non-inventory items (services, kits, etc.)
+   * leave those columns null and get dropped here.
+   */
+  async getInventory() {
+    return this.runSuiteQLPaginated(`
+      SELECT item.id,
+             item.itemId,
+             item.displayName,
+             item.quantityOnHand,
+             item.quantityAvailable,
+             item.quantityCommitted,
+             item.quantityOnOrder,
+             item.quantityBackOrdered,
+             item.averageCost,
+             item.reorderPoint,
+             item.isInactive
+      FROM item
+      WHERE item.quantityOnHand IS NOT NULL
+      ORDER BY item.itemId
+    `, 'Inventory snapshot');
+  }
+
   async getLineItemsWithPartCodes(tranType, days = 730) {
     const lookback = NetSuiteClient._assertIsoDate(this._lookbackDateFromDays(days), 'lookback');
     const typeFilter = tranType === 'Estimate' ? "= 'Estimate'" : "IN ('SalesOrd', 'Invoice')";

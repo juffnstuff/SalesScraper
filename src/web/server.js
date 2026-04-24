@@ -1244,28 +1244,16 @@ function startNightlyScanScheduler() {
     console.log(`  Next nightly run in ${hoursUntil}h`);
 
     setTimeout(async () => {
-      // Claude web_search is the only expensive part of this job (~$10/day
-      // when run nightly). Scope it to Wednesdays only — every other night we
-      // still run the free internal jobs below (NetSuite sync, part-code
-      // re-scrape, geocoding) so the sales map stays fresh daily.
+      // Claude web_search is the only expensive part of this job. Scope it to
+      // Wednesdays — other nights the internal housekeeping below still runs.
+      // NetSuite sales/estimate/inventory sync has moved to the workday 7am/2pm
+      // Mon–Fri scheduler (startWorkdayNetSuiteScheduler) and no longer runs
+      // here.
       const isWednesday = new Date().getUTCDay() === 3; // 2am EST = 07:00 UTC; UTC day matches EST day at that hour
       if (isWednesday) {
         await runNightlyScan().catch(e => console.error('[Weekly] Heatmap scan error:', e.message));
       } else {
         console.log('[Nightly] Skipping Claude heatmap scan (runs weekly on Wednesdays)');
-      }
-
-      // Run NetSuite sync
-      if (process.env.NETSUITE_ACCOUNT_ID) {
-        console.log('[Nightly] Starting NetSuite sync...');
-        try {
-          const result = await netsuiteSync.runSync();
-          const totalFetched = result.sales.fetched + result.estimates.fetched;
-          const totalUpserted = result.sales.upserted + result.estimates.upserted;
-          console.log(`[Nightly] NetSuite sync: ${totalFetched} fetched, ${totalUpserted} upserted`);
-        } catch (e) {
-          console.error('[Nightly] NetSuite sync error:', e.message);
-        }
       }
 
       // Re-scrape line items with actual part codes from NetSuite
@@ -1349,7 +1337,58 @@ function startNightlyScanScheduler() {
   }
 
   scheduleNext();
-  console.log('  Nightly NetSuite sync + geocoding at 2:00am EST; Claude heatmap scan weekly on Wednesdays');
+  console.log('  Nightly 2am EST: part-code re-scrape + geocoding (Wed adds Claude heatmap scan)');
+}
+
+// ── Workday NetSuite scheduler: 7am + 2pm EST, Mon–Fri ──
+// Pulls sales/estimate updates + a full inventory snapshot from NetSuite so
+// the other services reading this database stay fresh during business hours.
+// Weekends are skipped (no NetSuite activity to capture).
+function startWorkdayNetSuiteScheduler() {
+  function msUntilNextUtcHour(hour) {
+    const now = new Date();
+    const target = new Date(now);
+    target.setUTCHours(hour, 0, 0, 0);
+    if (target <= now) target.setUTCDate(target.getUTCDate() + 1);
+    return target.getTime() - now.getTime();
+  }
+
+  async function runJob(label) {
+    if (!process.env.NETSUITE_ACCOUNT_ID) {
+      console.log(`[${label}] Skipping — NETSUITE_ACCOUNT_ID not set`);
+      return;
+    }
+    console.log(`[${label}] Starting NetSuite sync + inventory refresh...`);
+    try {
+      const result = await netsuiteSync.runSync();
+      const txFetched = result.sales.fetched + result.estimates.fetched;
+      const txUpserted = result.sales.upserted + result.estimates.upserted;
+      console.log(`[${label}] Done: ${txFetched} txn fetched / ${txUpserted} upserted; ${result.inventory.upserted}/${result.inventory.fetched} inventory items refreshed`);
+    } catch (e) {
+      console.error(`[${label}] NetSuite sync error:`, e.message);
+    }
+  }
+
+  function scheduleAt(hourUTC, label) {
+    const delay = msUntilNextUtcHour(hourUTC);
+    console.log(`  Next ${label} run in ${(delay / 3600000).toFixed(1)}h`);
+    setTimeout(async () => {
+      const day = new Date().getUTCDay(); // 1=Mon … 5=Fri (2am EST window aside, these UTC hours still fall on the local weekday)
+      if (day >= 1 && day <= 5) {
+        await runJob(label);
+      } else {
+        console.log(`[${label}] Skipping — weekend (UTC day ${day})`);
+      }
+      scheduleAt(hourUTC, label); // reschedule for next occurrence (24h later)
+    }, delay);
+  }
+
+  // 7am EST = 12:00 UTC (standard) / 11:00 UTC (daylight) — kept as fixed UTC
+  // to match the existing 2am-EST scheduler's convention; DST drift is
+  // accepted.
+  scheduleAt(12, 'Morning NetSuite sync (7am EST)');
+  scheduleAt(19, 'Afternoon NetSuite sync (2pm EST)');
+  console.log('  Workday NetSuite sync (sales+estimates+inventory): 7am & 2pm EST, Mon–Fri');
 }
 
 // ── ICP detail ──
@@ -1385,6 +1424,9 @@ app.listen(PORT, async () => {
   // Schedule nightly heatmap scan (2-4am EST)
   startNightlyScanScheduler();
 
+  // Schedule twice-daily NetSuite sync + inventory refresh (Mon–Fri)
+  startWorkdayNetSuiteScheduler();
+
   // Run background NetSuite incremental sync if DB is available and NetSuite is configured
   if (await db.isReady() && process.env.NETSUITE_ACCOUNT_ID) {
     runStartupNetSuiteSync().catch(e => console.error('NetSuite startup sync error:', e.message));
@@ -1408,7 +1450,7 @@ async function runStartupNetSuiteSync() {
     const result = await netsuiteSync.runSync();
     const totalFetched = result.sales.fetched + result.estimates.fetched;
     const totalUpserted = result.sales.upserted + result.estimates.upserted;
-    console.log(`  NetSuite sync complete: ${totalFetched} fetched, ${totalUpserted} upserted in ${result.durationMs}ms`);
+    console.log(`  NetSuite sync complete: ${totalFetched} txn fetched, ${totalUpserted} upserted; ${result.inventory.upserted}/${result.inventory.fetched} inventory items refreshed in ${result.durationMs}ms`);
   } catch (e) {
     console.error('  NetSuite startup sync failed:', e.message);
   }

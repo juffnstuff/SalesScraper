@@ -114,6 +114,80 @@ async function upsertEstimate(row) {
 }
 
 /**
+ * Upsert one inventory item row from NetSuite into the inventory table.
+ * Single-location setup: NetSuite's `item.quantityOnHand` etc. are already
+ * company-wide aggregates, so we store them directly without a location join.
+ */
+async function upsertInventoryItem(row) {
+  // SuiteQL returns column names lowercased in some setups and as-declared in
+  // others; tolerate both so we don't care which path populates the row.
+  const internalId = String(row.id || row.ID || '');
+  if (!internalId) return false;
+
+  const num = (v) => {
+    if (v === null || v === undefined || v === '') return null;
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const bool = (v) => v === true || v === 'T' || v === 't' || v === 'true';
+
+  const result = await db.query(`
+    INSERT INTO inventory (
+      item_id, sku, name,
+      quantity_on_hand, quantity_available, quantity_committed,
+      quantity_on_order, quantity_back_ordered,
+      average_cost, reorder_point, is_inactive,
+      last_synced_at
+    )
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+    ON CONFLICT (item_id) DO UPDATE SET
+      sku = EXCLUDED.sku,
+      name = EXCLUDED.name,
+      quantity_on_hand = EXCLUDED.quantity_on_hand,
+      quantity_available = EXCLUDED.quantity_available,
+      quantity_committed = EXCLUDED.quantity_committed,
+      quantity_on_order = EXCLUDED.quantity_on_order,
+      quantity_back_ordered = EXCLUDED.quantity_back_ordered,
+      average_cost = EXCLUDED.average_cost,
+      reorder_point = EXCLUDED.reorder_point,
+      is_inactive = EXCLUDED.is_inactive,
+      last_synced_at = NOW()
+    RETURNING item_id
+  `, [
+    internalId,
+    row.itemId || row.itemid || '',
+    row.displayName || row.displayname || '',
+    num(row.quantityOnHand ?? row.quantityonhand) ?? 0,
+    num(row.quantityAvailable ?? row.quantityavailable) ?? 0,
+    num(row.quantityCommitted ?? row.quantitycommitted) ?? 0,
+    num(row.quantityOnOrder ?? row.quantityonorder) ?? 0,
+    num(row.quantityBackOrdered ?? row.quantitybackordered) ?? 0,
+    num(row.averageCost ?? row.averagecost),
+    num(row.reorderPoint ?? row.reorderpoint),
+    bool(row.isInactive ?? row.isinactive)
+  ]);
+
+  return result.rows.length > 0;
+}
+
+/**
+ * Pull the full inventory snapshot from NetSuite and upsert into `inventory`.
+ * Returns { fetched, upserted } so the caller can log the outcome.
+ */
+async function syncInventory(netsuite) {
+  const rows = await netsuite.getInventory();
+  let upserted = 0;
+  for (const row of rows) {
+    try {
+      if (await upsertInventoryItem(row)) upserted++;
+    } catch (e) {
+      console.warn(`[NetSuite Sync] inventory upsert failed for item ${row.id || row.itemId}: ${e.message}`);
+    }
+  }
+  return { fetched: rows.length, upserted };
+}
+
+/**
  * Run an incremental sync from NetSuite.
  * - Checks last sync date from DB
  * - Queries NetSuite for records modified since then
@@ -122,7 +196,7 @@ async function upsertEstimate(row) {
  *
  * @param {Object} options
  * @param {boolean} options.force - If true, ignore last sync and pull wider window
- * @returns {{ sales: { fetched, upserted }, estimates: { fetched, upserted }, sinceDate, durationMs }}
+ * @returns {{ sales: { fetched, upserted }, estimates: { fetched, upserted }, inventory: { fetched, upserted }, sinceDate, durationMs }}
  */
 async function runSync(options = {}) {
   if (!(await db.isReady())) {
@@ -162,6 +236,7 @@ async function runSync(options = {}) {
   const result = {
     sales: { fetched: 0, upserted: 0 },
     estimates: { fetched: 0, upserted: 0 },
+    inventory: { fetched: 0, upserted: 0 },
     sinceDate,
     durationMs: 0
   };
@@ -199,21 +274,51 @@ async function runSync(options = {}) {
       if (upserted) result.estimates.upserted++;
     }
 
-    result.durationMs = Date.now() - startTime;
-
     // Record estimates sync
     await recordSync({
       syncType: 'estimates',
       cutoff: sinceDate,
       fetched: result.estimates.fetched,
       upserted: result.estimates.upserted,
-      durationMs: result.durationMs,
+      durationMs: Date.now() - startTime,
       status: 'success'
     });
 
+    // Inventory snapshot (full refresh each run — single location, current
+    // state only; the other service reads `inventory` as the source of truth).
+    console.log('[NetSuite Sync] Refreshing inventory snapshot...');
+    try {
+      const invStart = Date.now();
+      result.inventory = await syncInventory(netsuite);
+      console.log(`[NetSuite Sync] Inventory: ${result.inventory.upserted}/${result.inventory.fetched} items upserted`);
+      await recordSync({
+        syncType: 'inventory',
+        cutoff: sinceDate,
+        fetched: result.inventory.fetched,
+        upserted: result.inventory.upserted,
+        durationMs: Date.now() - invStart,
+        status: 'success'
+      });
+    } catch (e) {
+      console.error('[NetSuite Sync] Inventory refresh failed:', e.message);
+      await recordSync({
+        syncType: 'inventory',
+        cutoff: sinceDate,
+        fetched: result.inventory.fetched,
+        upserted: result.inventory.upserted,
+        durationMs: 0,
+        status: 'error',
+        errorMessage: e.message
+      });
+      // Don't rethrow — sales/estimate sync already succeeded and shouldn't
+      // be penalized by an inventory query hiccup.
+    }
+
+    result.durationMs = Date.now() - startTime;
+
     const totalFetched = result.sales.fetched + result.estimates.fetched;
     const totalUpserted = result.sales.upserted + result.estimates.upserted;
-    console.log(`[NetSuite Sync] Complete: ${totalFetched} fetched, ${totalUpserted} upserted in ${result.durationMs}ms`);
+    console.log(`[NetSuite Sync] Complete: ${totalFetched} txn fetched, ${totalUpserted} upserted; ${result.inventory.upserted} inventory items refreshed in ${result.durationMs}ms`);
 
     // Geocode any new transactions that don't have coordinates yet
     if (totalUpserted > 0) {
@@ -312,4 +417,4 @@ async function geocodeNewTransactions() {
   console.log(`[Geocode] Done: ${geocoded}/${rows.length} geocoded.`);
 }
 
-module.exports = { runSync, getSyncStatus, getLastSyncDate };
+module.exports = { runSync, getSyncStatus, getLastSyncDate, syncInventory, upsertInventoryItem };
