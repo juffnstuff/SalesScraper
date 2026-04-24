@@ -264,6 +264,7 @@ class NetSuiteClient {
     const since = NetSuiteClient._assertIsoDate(sinceDate, 'sinceDate');
     return this.runSuiteQLPaginated(`
       SELECT transaction.id, transaction.tranId, transaction.tranDate,
+             transaction.shipDate,
              transaction.total, transaction.memo, transaction.employee,
              transaction.lastModifiedDate,
              BUILTIN.DF(transaction.entity) AS customerName,
@@ -279,6 +280,39 @@ class NetSuiteClient {
         AND transaction.lastModifiedDate >= TO_DATE('${since}', 'YYYY-MM-DD')
       ORDER BY transaction.lastModifiedDate DESC
     `, 'Incremental sync: sales modified since ' + since);
+  }
+
+  /**
+   * Pull every currently-open sales order (Pending Approval + Pending
+   * Fulfillment), regardless of when it was last modified. The incremental
+   * sync keys on lastModifiedDate, so an SO created weeks ago and left
+   * sitting in Pending Approval never enters the sliding window and goes
+   * missing from the DB. This safety-net query catches those rows on every
+   * sync run.
+   *
+   * Filters on the raw transaction.status values ('SalesOrd:A' = Pending
+   * Approval, 'SalesOrd:B' = Pending Fulfillment) — BUILTIN.DF isn't
+   * reliable inside WHERE clauses across NetSuite SuiteQL versions.
+   */
+  async getOpenSalesOrders() {
+    return this.runSuiteQLPaginated(`
+      SELECT transaction.id, transaction.tranId, transaction.tranDate,
+             transaction.shipDate,
+             transaction.total, transaction.memo, transaction.employee,
+             transaction.lastModifiedDate,
+             BUILTIN.DF(transaction.entity) AS customerName,
+             BUILTIN.DF(transaction.status) AS statusDisplay,
+             transactionShippingAddress.city AS shipCity,
+             transactionShippingAddress.state AS shipState,
+             transactionShippingAddress.zip AS shipZip,
+             transactionShippingAddress.addr1 AS shipStreet
+      FROM transaction
+        LEFT JOIN transactionShippingAddress
+          ON transaction.shippingAddress = transactionShippingAddress.nkey
+      WHERE transaction.type = 'SalesOrd'
+        AND transaction.status IN ('SalesOrd:A', 'SalesOrd:B')
+      ORDER BY transaction.tranDate DESC
+    `, 'Open sales orders (Pending Approval + Pending Fulfillment)');
   }
 
   /**

@@ -50,11 +50,12 @@ async function upsertSalesOrder(row) {
   if (!tranId) return false;
 
   const result = await db.query(`
-    INSERT INTO transactions (tran_id, tran_type, customer_name, sales_rep, city, state, zip, street, date, total, status, memo, synced_at)
-    VALUES ($1, 'SalesOrd', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+    INSERT INTO transactions (tran_id, tran_type, customer_name, sales_rep, city, state, zip, street, date, ship_date, total, status, memo, synced_at)
+    VALUES ($1, 'SalesOrd', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
     ON CONFLICT (tran_id) DO UPDATE SET
       customer_name = EXCLUDED.customer_name,
       city = EXCLUDED.city, state = EXCLUDED.state, zip = EXCLUDED.zip, street = EXCLUDED.street,
+      ship_date = EXCLUDED.ship_date,
       total = EXCLUDED.total, status = EXCLUDED.status, memo = EXCLUDED.memo,
       synced_at = NOW()
     RETURNING id
@@ -67,12 +68,32 @@ async function upsertSalesOrder(row) {
     row.shipZip || row.shipzip || '',
     row.shipStreet || row.addr1 || '',
     row.tranDate || row.trandate || '',
+    row.shipDate || row.shipdate || '',
     parseFloat(row.total) || 0,
     row.statusDisplay || row.status || '',
     row.memo || ''
   ]);
 
   return result.rows.length > 0;
+}
+
+/**
+ * Refresh every currently-open sales order (Pending Approval + Pending
+ * Fulfillment) regardless of modification date. Runs on every sync so any
+ * long-standing pending order that the incremental cutoff would skip still
+ * lands in the DB.
+ */
+async function syncOpenSalesOrders(netsuite) {
+  const rows = await netsuite.getOpenSalesOrders();
+  let upserted = 0;
+  for (const row of rows) {
+    try {
+      if (await upsertSalesOrder(row)) upserted++;
+    } catch (e) {
+      console.warn(`[NetSuite Sync] open SO upsert failed for ${row.tranId || row.tranid}: ${e.message}`);
+    }
+  }
+  return { fetched: rows.length, upserted };
 }
 
 /**
@@ -196,7 +217,7 @@ async function syncInventory(netsuite) {
  *
  * @param {Object} options
  * @param {boolean} options.force - If true, ignore last sync and pull wider window
- * @returns {{ sales: { fetched, upserted }, estimates: { fetched, upserted }, inventory: { fetched, upserted }, sinceDate, durationMs }}
+ * @returns {{ sales: { fetched, upserted }, estimates: { fetched, upserted }, openSales: { fetched, upserted }, inventory: { fetched, upserted }, sinceDate, durationMs }}
  */
 async function runSync(options = {}) {
   if (!(await db.isReady())) {
@@ -236,6 +257,7 @@ async function runSync(options = {}) {
   const result = {
     sales: { fetched: 0, upserted: 0 },
     estimates: { fetched: 0, upserted: 0 },
+    openSales: { fetched: 0, upserted: 0 },
     inventory: { fetched: 0, upserted: 0 },
     sinceDate,
     durationMs: 0
@@ -262,6 +284,38 @@ async function runSync(options = {}) {
       durationMs: Date.now() - startTime,
       status: 'success'
     });
+
+    // Safety-net: refresh every currently-open sales order (Pending Approval
+    // + Pending Fulfillment) regardless of lastModifiedDate. The incremental
+    // pull above misses long-standing pending SOs that haven't been touched
+    // since they entered that status — without this every sync would leave
+    // them invisible to the sales map.
+    console.log('[NetSuite Sync] Refreshing open sales orders (Pending Approval + Fulfillment)...');
+    try {
+      const openStart = Date.now();
+      result.openSales = await syncOpenSalesOrders(netsuite);
+      console.log(`[NetSuite Sync] Open SOs: ${result.openSales.upserted}/${result.openSales.fetched} refreshed`);
+      await recordSync({
+        syncType: 'open_sales',
+        cutoff: sinceDate,
+        fetched: result.openSales.fetched,
+        upserted: result.openSales.upserted,
+        durationMs: Date.now() - openStart,
+        status: 'success'
+      });
+    } catch (e) {
+      console.error('[NetSuite Sync] Open SO refresh failed:', e.message);
+      await recordSync({
+        syncType: 'open_sales',
+        cutoff: sinceDate,
+        fetched: result.openSales.fetched,
+        upserted: result.openSales.upserted,
+        durationMs: 0,
+        status: 'error',
+        errorMessage: e.message
+      });
+      // Don't rethrow — the incremental sales sync already succeeded.
+    }
 
     // Fetch modified estimates
     console.log('[NetSuite Sync] Querying estimates...');
@@ -318,7 +372,7 @@ async function runSync(options = {}) {
 
     const totalFetched = result.sales.fetched + result.estimates.fetched;
     const totalUpserted = result.sales.upserted + result.estimates.upserted;
-    console.log(`[NetSuite Sync] Complete: ${totalFetched} txn fetched, ${totalUpserted} upserted; ${result.inventory.upserted} inventory items refreshed in ${result.durationMs}ms`);
+    console.log(`[NetSuite Sync] Complete: ${totalFetched} txn fetched, ${totalUpserted} upserted; ${result.openSales.upserted} open SOs refreshed; ${result.inventory.upserted} inventory items refreshed in ${result.durationMs}ms`);
 
     // Geocode any new transactions that don't have coordinates yet
     if (totalUpserted > 0) {
@@ -417,4 +471,4 @@ async function geocodeNewTransactions() {
   console.log(`[Geocode] Done: ${geocoded}/${rows.length} geocoded.`);
 }
 
-module.exports = { runSync, getSyncStatus, getLastSyncDate, syncInventory, upsertInventoryItem };
+module.exports = { runSync, getSyncStatus, getLastSyncDate, syncInventory, upsertInventoryItem, syncOpenSalesOrders };

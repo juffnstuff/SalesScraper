@@ -625,6 +625,8 @@ app.post('/api/netsuite-sync', ensureAuth, async (req, res) => {
       sinceDate: result.sinceDate,
       sales: result.sales,
       estimates: result.estimates,
+      openSales: result.openSales,
+      inventory: result.inventory,
       durationMs: result.durationMs
     });
   } catch (e) {
@@ -1363,7 +1365,7 @@ function startWorkdayNetSuiteScheduler() {
       const result = await netsuiteSync.runSync();
       const txFetched = result.sales.fetched + result.estimates.fetched;
       const txUpserted = result.sales.upserted + result.estimates.upserted;
-      console.log(`[${label}] Done: ${txFetched} txn fetched / ${txUpserted} upserted; ${result.inventory.upserted}/${result.inventory.fetched} inventory items refreshed`);
+      console.log(`[${label}] Done: ${txFetched} txn fetched / ${txUpserted} upserted; ${result.openSales.upserted} open SOs refreshed; ${result.inventory.upserted}/${result.inventory.fetched} inventory items refreshed`);
     } catch (e) {
       console.error(`[${label}] NetSuite sync error:`, e.message);
     }
@@ -1450,7 +1452,7 @@ async function runStartupNetSuiteSync() {
     const result = await netsuiteSync.runSync();
     const totalFetched = result.sales.fetched + result.estimates.fetched;
     const totalUpserted = result.sales.upserted + result.estimates.upserted;
-    console.log(`  NetSuite sync complete: ${totalFetched} txn fetched, ${totalUpserted} upserted; ${result.inventory.upserted}/${result.inventory.fetched} inventory items refreshed in ${result.durationMs}ms`);
+    console.log(`  NetSuite sync complete: ${totalFetched} txn fetched, ${totalUpserted} upserted; ${result.openSales.upserted} open SOs refreshed; ${result.inventory.upserted}/${result.inventory.fetched} inventory items refreshed in ${result.durationMs}ms`);
   } catch (e) {
     console.error('  NetSuite startup sync failed:', e.message);
   }
