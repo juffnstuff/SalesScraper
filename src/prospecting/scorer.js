@@ -118,7 +118,7 @@ class Scorer {
    */
   async _aiScoreBatch(projects, icp) {
     const response = await this.anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 2000,
       system: `You are a B2B sales scoring engine for RubberForm Recycled Products (recycled rubber safety products for construction/parking/municipal markets).
 Score each project opportunity against the provided ICP on a scale of 0-100.

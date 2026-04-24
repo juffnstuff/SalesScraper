@@ -68,7 +68,7 @@ class WebSearchSource {
   async _runWebSearch(query, icp) {
     try {
       const response = await this.anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-sonnet-4-6',
         max_tokens: 2000,
         tools: [{
           type: 'web_search_20250305',

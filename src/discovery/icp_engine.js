@@ -26,18 +26,40 @@ class ICPEngine {
   async getICP(rep, forceRefresh = false) {
     const icpPath = path.join(ICP_DIR, `${rep.id}_icp.json`);
 
-    if (!forceRefresh && fs.existsSync(icpPath)) {
-      const stat = fs.statSync(icpPath);
-      const ageDays = (Date.now() - stat.mtimeMs) / (1000 * 60 * 60 * 24);
-      if (ageDays < ICP_MAX_AGE_DAYS) {
-        return JSON.parse(fs.readFileSync(icpPath, 'utf8'));
-      }
+    // Cache read — any failure (missing file, corrupt JSON, race against a
+    // concurrent write, stat failure) falls through to regeneration rather
+    // than crashing the run.
+    if (!forceRefresh) {
+      const cached = this._tryLoadCachedICP(icpPath);
+      if (cached) return cached;
     }
 
     const icp = await this.deriveICP(rep);
-    fs.mkdirSync(ICP_DIR, { recursive: true });
-    fs.writeFileSync(icpPath, JSON.stringify(icp, null, 2));
+
+    try {
+      fs.mkdirSync(ICP_DIR, { recursive: true });
+      fs.writeFileSync(icpPath, JSON.stringify(icp, null, 2));
+    } catch (e) {
+      console.warn(`  [ICP] Failed to persist cache for ${rep.id}: ${e.message}`);
+    }
+
     return icp;
+  }
+
+  _tryLoadCachedICP(icpPath) {
+    try {
+      const stat = fs.statSync(icpPath);
+      const ageDays = (Date.now() - stat.mtimeMs) / (1000 * 60 * 60 * 24);
+      if (ageDays >= ICP_MAX_AGE_DAYS) return null;
+      const parsed = JSON.parse(fs.readFileSync(icpPath, 'utf8'));
+      if (!parsed || typeof parsed !== 'object') return null;
+      return parsed;
+    } catch (e) {
+      if (e.code !== 'ENOENT') {
+        console.warn(`  [ICP] Cache load failed (${e.code || e.message}); regenerating`);
+      }
+      return null;
+    }
   }
 
   /**
@@ -89,7 +111,7 @@ class ICPEngine {
 
   async _synthesizeICP(rep, netsuiteSignals, emailPatterns) {
     const message = await this.anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 2000,
       system: `You are a B2B sales analyst for RubberForm Recycled Products, a Buffalo, NY manufacturer of recycled rubber and thermoplastic safety products.
 Products include: trackout/construction entrance mats, speed bumps/humps, cable protectors, wheel stops, bollards, sign post bases, parking curbs, drainage products, spill containment berms, portable electric cable support towers, rumble strips, delineators, and custom molded rubber/thermoplastic safety items.
