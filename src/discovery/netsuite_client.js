@@ -1,10 +1,11 @@
 /**
  * NetSuite SuiteQL Client
  * Wraps NetSuite MCP tool calls for use in the prospecting pipeline.
- * When running standalone (non-MCP), uses REST API with token-based auth.
+ * When running standalone (non-MCP), uses REST API with OAuth 1.0 TBA auth.
  */
 
 const https = require('https');
+const crypto = require('crypto');
 
 class NetSuiteClient {
   constructor(config = {}) {
@@ -38,12 +39,13 @@ class NetSuiteClient {
 
   /**
    * Run a SuiteQL query. In MCP mode this is a passthrough;
-   * standalone mode uses the REST API.
+   * standalone mode uses the REST API with OAuth 1.0 TBA auth.
    */
   async runSuiteQL(query, description = '', limit = 1000, offset = 0) {
-    // When used from Claude Code MCP, the MCP tool handles execution.
-    // This method is for standalone/CLI execution via REST.
-    const url = `https://${this.accountId}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql?limit=${limit}&offset=${offset}`;
+    // NetSuite hostname convention: lowercase, underscore → dash.
+    // e.g. "1234567_SB1" → "1234567-sb1.suitetalk.api.netsuite.com".
+    const hostAccount = String(this.accountId || '').toLowerCase().replace(/_/g, '-');
+    const url = `https://${hostAccount}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql?limit=${limit}&offset=${offset}`;
 
     return new Promise((resolve, reject) => {
       const body = JSON.stringify({ q: query });
@@ -52,7 +54,6 @@ class NetSuiteClient {
         headers: {
           'Content-Type': 'application/json',
           'Prefer': 'transient',
-          // In production, use OAuth 1.0 TBA headers
           'Authorization': this._buildAuthHeader('POST', url)
         }
       };
@@ -61,16 +62,24 @@ class NetSuiteClient {
         let data = '';
         res.on('data', chunk => data += chunk);
         res.on('end', () => {
-          try {
-            const parsed = JSON.parse(data);
-            resolve({
-              items: parsed.items || [],
-              hasMore: parsed.hasMore || false,
-              totalResults: parsed.totalResults || 0
-            });
-          } catch (e) {
-            reject(new Error(`Failed to parse NetSuite response: ${e.message}`));
+          // Reject non-2xx loudly — previously errors silently returned [] via
+          // `parsed.items || []`, which hid broken OAuth signatures for months.
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            return reject(new Error(
+              `NetSuite SuiteQL ${res.statusCode} for "${description}": ${data.slice(0, 500)}`
+            ));
           }
+          let parsed;
+          try {
+            parsed = JSON.parse(data);
+          } catch (e) {
+            return reject(new Error(`Failed to parse NetSuite response: ${e.message} — body: ${data.slice(0, 200)}`));
+          }
+          resolve({
+            items: parsed.items || [],
+            hasMore: parsed.hasMore || false,
+            totalResults: parsed.totalResults || 0
+          });
         });
       });
 
@@ -427,10 +436,61 @@ class NetSuiteClient {
     return d.toISOString().split('T')[0];
   }
 
-  _buildAuthHeader(method, url) {
-    // Placeholder for OAuth 1.0 TBA signature
-    // In production, implement proper OAuth 1.0 signing
-    return `OAuth realm="${this.accountId}", oauth_consumer_key="${this.consumerKey}", oauth_token="${this.tokenId}", oauth_signature_method="HMAC-SHA256", oauth_timestamp="${Math.floor(Date.now()/1000)}", oauth_nonce="${Math.random().toString(36).slice(2)}", oauth_version="1.0", oauth_signature="PLACEHOLDER"`;
+  /**
+   * Build an OAuth 1.0 TBA Authorization header for NetSuite.
+   * HMAC-SHA256 signature per RFC 5849 with RFC 3986 encoding.
+   *
+   * NetSuite conventions applied:
+   *   - Realm = account ID uppercased, underscores preserved (e.g. "1234567_SB1").
+   *   - Hostname uses lowercased accountId with underscores → dashes; that happens
+   *     in runSuiteQL before calling here, so the URL arg here is already normalized.
+   *   - Query-string params (limit, offset) are included in the signature base string;
+   *     the JSON body is NOT (NetSuite follows the "non-form-encoded body" convention).
+   */
+  _buildAuthHeader(method, urlStr) {
+    if (!this.consumerKey || !this.consumerSecret || !this.tokenId || !this.tokenSecret) {
+      throw new Error('NetSuite TBA credentials incomplete — need consumerKey/Secret + tokenId/Secret');
+    }
+
+    // RFC 3986 percent-encoding (stricter than encodeURIComponent, which leaves !*'() alone).
+    const enc = (s) => encodeURIComponent(String(s))
+      .replace(/[!*'()]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+
+    const url = new URL(urlStr);
+    const baseUrl = `${url.protocol}//${url.host}${url.pathname}`;
+
+    const queryParams = {};
+    for (const [k, v] of url.searchParams) queryParams[k] = v;
+
+    const oauthParams = {
+      oauth_consumer_key: this.consumerKey,
+      oauth_nonce: crypto.randomBytes(16).toString('hex'),
+      oauth_signature_method: 'HMAC-SHA256',
+      oauth_timestamp: String(Math.floor(Date.now() / 1000)),
+      oauth_token: this.tokenId,
+      oauth_version: '1.0'
+    };
+
+    // Signature base string: METHOD & encoded(URL) & encoded(sorted params joined by &).
+    // Params are encoded, then sorted by encoded key (ties by encoded value).
+    const allParams = { ...queryParams, ...oauthParams };
+    const encodedPairs = Object.keys(allParams)
+      .map(k => [enc(k), enc(allParams[k])])
+      .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0));
+    const paramString = encodedPairs.map(([k, v]) => `${k}=${v}`).join('&');
+
+    const baseString = `${method.toUpperCase()}&${enc(baseUrl)}&${enc(paramString)}`;
+    const signingKey = `${enc(this.consumerSecret)}&${enc(this.tokenSecret)}`;
+    const signature = crypto.createHmac('sha256', signingKey).update(baseString).digest('base64');
+
+    // Authorization header. Only oauth_* params (plus realm + signature) belong here —
+    // the query params go in the URL, not the header.
+    const realm = String(this.accountId || '').toUpperCase();
+    const headerParams = { ...oauthParams, oauth_signature: signature };
+    const headerFields = Object.keys(headerParams)
+      .sort()
+      .map(k => `${enc(k)}="${enc(headerParams[k])}"`);
+    return `OAuth realm="${enc(realm)}", ${headerFields.join(', ')}`;
   }
 }
 
