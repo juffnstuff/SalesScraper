@@ -9,28 +9,30 @@ const LAYER_COLORS = {
   quoted: '#16a34a',
   direct: '#2563eb',
   open: '#ea580c',
-  lost: '#dc2626'
+  lost: '#dc2626',
+  pending: '#ca8a04'
 };
 
 const LAYER_LABELS = {
   quoted: 'Quote → Sale',
   direct: 'Direct Sale',
   open: 'Open Quote',
-  lost: 'Lost Quote'
+  lost: 'Lost Quote',
+  pending: 'Pending Order'
 };
 
 // Global state
 let map;
 let allTransactions = [];
 let geoData = null;
-let markerLayers = { quoted: null, direct: null, open: null, lost: null };
-let activeLayers = { quoted: true, direct: true, open: true, lost: true };
+let markerLayers = { quoted: null, direct: null, open: null, lost: null, pending: null };
+let activeLayers = { quoted: true, direct: true, open: true, lost: true, pending: true };
 let activeYears = {};
 let currentListTransactions = [];
 let lastViewedLayer = null;
 
 // Pre-built marker cache: markerCache[layer][year] = [marker, marker, ...]
-let markerCache = { quoted: {}, direct: {}, open: {}, lost: {} };
+let markerCache = { quoted: {}, direct: {}, open: {}, lost: {}, pending: {} };
 
 const US_STATES_GEOJSON = '/data/us-states.json';
 
@@ -598,22 +600,26 @@ function updateStats(filtered) {
   const direct = filtered.filter(t => t.layer === 'direct');
   const open = filtered.filter(t => t.layer === 'open');
   const lost = filtered.filter(t => t.layer === 'lost');
+  const pending = filtered.filter(t => t.layer === 'pending');
 
   const quotedRevenue = quoted.reduce((s, t) => s + t.total, 0);
   const directRevenue = direct.reduce((s, t) => s + t.total, 0);
   const openValue = open.reduce((s, t) => s + t.total, 0);
   const lostValue = lost.reduce((s, t) => s + t.total, 0);
+  const pendingValue = pending.reduce((s, t) => s + t.total, 0);
 
   document.getElementById('statTotal').textContent = filtered.length.toLocaleString();
   document.getElementById('statQuoted').textContent = quoted.length.toLocaleString();
   document.getElementById('statDirect').textContent = direct.length.toLocaleString();
   document.getElementById('statOpen').textContent = open.length.toLocaleString();
   document.getElementById('statLost').textContent = lost.length.toLocaleString();
+  document.getElementById('statPending').textContent = pending.length.toLocaleString();
 
   document.getElementById('statQuotedRevenue').textContent = fmtDollars(quotedRevenue);
   document.getElementById('statDirectRevenue').textContent = fmtDollars(directRevenue);
   document.getElementById('statOpenValue').textContent = fmtDollars(openValue);
   document.getElementById('statLostValue').textContent = fmtDollars(lostValue);
+  document.getElementById('statPendingValue').textContent = fmtDollars(pendingValue);
 
   const totalSales = quoted.length + direct.length;
   const directPct = totalSales > 0 ? ((direct.length / totalSales) * 100).toFixed(1) : '--';

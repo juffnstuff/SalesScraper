@@ -289,14 +289,18 @@ async function getTransactions(repId, reps) {
         if (estStatus === 'converted') return null;
         layer = estStatus; // 'open' or 'lost'
       } else {
-        // Sales orders: the sync keeps every status (Pending Approval, Pending
-        // Fulfillment, Partially Fulfilled, Pending Billing, Billed, Closed,
-        // Cancelled) so the other services reading this DB see the full
-        // picture. For THIS app's sales map we only want the "shipped and
-        // billed" view — fulfilled orders and billed orders — excluding
-        // closed, cancelled, and orders still in the pending phase.
-        if (!isSalesOrderShippedOrBilled(r.status)) return null;
-        layer = r.had_quote ? 'quoted' : 'direct';
+        // Sales orders: the sync keeps every status so other services reading
+        // this DB see the full picture. For the sales map we show three
+        // buckets — shipped (billed/fulfilled, split into quoted/direct),
+        // pending (Pending Approval + Pending Fulfillment, its own togglable
+        // layer), and hidden (Closed / Cancelled, never on the map).
+        const soBucket = classifySalesOrderForMap(r.status);
+        if (soBucket === 'hidden') return null;
+        if (soBucket === 'pending') {
+          layer = 'pending';
+        } else {
+          layer = r.had_quote ? 'quoted' : 'direct';
+        }
       }
 
       return {
@@ -325,27 +329,26 @@ async function getTransactions(repId, reps) {
   return null;
 }
 
-// Decide whether a sales order should appear on the Sales Map. The user
-// wants "shipped and billed" visible (Partially Fulfilled → Pending Billing
-// → Billed) and explicitly excluded: Closed, Cancelled, and orders still in
-// the pending phase (Pending Approval, Pending Fulfillment) that haven't
-// shipped yet.
+// Decide what layer a sales order belongs to on the Sales Map. The user's
+// buckets:
+//   - 'pending' : Pending Approval / Pending Fulfillment (not shipped yet;
+//                 shown on the map under its own filterable layer).
+//   - 'hidden'  : Closed / Cancelled — never shown on the map.
+//   - 'shipped' : Everything else (Partially Fulfilled, Pending Billing,
+//                 Billed, Fulfilled, legacy rows with blank status). These
+//                 get split further by had_quote into 'quoted' vs 'direct'.
 //
-// Status strings come from NetSuite via BUILTIN.DF(transaction.status) — they
-// are the human-readable display values. We match leniently on substrings so
-// a locale or version difference (e.g. "Cancelled" vs "Canceled") doesn't
-// silently hide rows.
-function isSalesOrderShippedOrBilled(status) {
+// Status strings come from NetSuite via BUILTIN.DF(transaction.status) — the
+// human-readable display values. Matching is case-insensitive and lenient
+// so a locale difference ("Cancelled" vs "Canceled") doesn't silently drop
+// rows.
+function classifySalesOrderForMap(status) {
   const s = (status || '').toLowerCase().trim();
-  if (!s) return true; // legacy rows without a status populated — keep showing
-  if (s.includes('cancel')) return false;
-  if (s === 'closed') return false;
-  if (s === 'pending approval') return false;
-  if (s === 'pending fulfillment') return false;
-  // Everything else is a shipped/billed variant: "Partially Fulfilled",
-  // "Pending Billing/Partially Fulfilled", "Pending Billing", "Billed",
-  // "Fulfilled", etc.
-  return true;
+  if (!s) return 'shipped'; // legacy rows without a populated status — keep visible
+  if (s.includes('cancel')) return 'hidden';
+  if (s === 'closed') return 'hidden';
+  if (s === 'pending approval' || s === 'pending fulfillment') return 'pending';
+  return 'shipped';
 }
 
 function classifyEstimateStatusFromDb(status, nsStatus, lostReason) {
