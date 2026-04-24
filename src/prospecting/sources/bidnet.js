@@ -4,6 +4,9 @@
  */
 
 const https = require('https');
+const { retry, parseRetryAfter } = require('../../util/retry');
+
+const REQUEST_TIMEOUT_MS = 15000;
 
 class BidAggregatorSearcher {
   constructor() {
@@ -58,25 +61,33 @@ class BidAggregatorSearcher {
   }
 
   async _searchSource(source, searchTerm, icp) {
-    return new Promise((resolve) => {
-      const params = new URLSearchParams({
-        q: searchTerm,
-        category: 'construction',
-        state: (icp.geographies || []).join(',')
-      });
+    const params = new URLSearchParams({
+      q: searchTerm,
+      category: 'construction',
+      state: (icp.geographies || []).join(',')
+    });
+    const url = `${source.searchUrl}?${params.toString()}`;
 
-      const url = `${source.searchUrl}?${params.toString()}`;
+    return retry(() => this._fetchSourceOnce(source, url, searchTerm, icp), {
+      maxAttempts: 3,
+      baseDelayMs: 1000,
+      maxDelayMs: 10000,
+      label: `${source.name} "${searchTerm}"`,
+    });
+  }
+
+  _fetchSourceOnce(source, url, searchTerm, icp) {
+    return new Promise((resolve, reject) => {
       const urlObj = new URL(url);
-
       const options = {
         hostname: urlObj.hostname,
         path: urlObj.pathname + urlObj.search,
         method: 'GET',
+        timeout: REQUEST_TIMEOUT_MS,
         headers: {
           'User-Agent': 'Mozilla/5.0 (compatible; RubberFormProspector/1.0)',
           'Accept': 'text/html,application/json'
-        },
-        timeout: 15000
+        }
       };
 
       const req = https.request(options, (res) => {
@@ -84,22 +95,20 @@ class BidAggregatorSearcher {
         res.on('data', chunk => data += chunk);
         res.on('end', () => {
           if (res.statusCode < 200 || res.statusCode >= 300) {
-            console.warn(`  ${source.name || 'BidNet'} HTTP ${res.statusCode} for "${searchTerm}"`);
-            return resolve([]);
+            const err = new Error(`${source.name} HTTP ${res.statusCode} for "${searchTerm}"`);
+            err.statusCode = res.statusCode;
+            err.retryAfterMs = parseRetryAfter(res.headers['retry-after']);
+            return reject(err);
           }
-          const results = this._parseResults(data, source, searchTerm, icp);
-          resolve(results);
+          resolve(this._parseResults(data, source, searchTerm, icp));
         });
       });
 
-      req.on('error', (err) => {
-        console.warn(`  ${source.name || 'BidNet'} network error for "${searchTerm}": ${err.message}`);
-        resolve([]);
-      });
+      req.on('error', reject);
       req.on('timeout', () => {
-        console.warn(`  ${source.name || 'BidNet'} timeout for "${searchTerm}"`);
-        req.destroy();
-        resolve([]);
+        const err = new Error(`${source.name} timed out after ${REQUEST_TIMEOUT_MS}ms for "${searchTerm}"`);
+        err.code = 'ETIMEDOUT';
+        req.destroy(err);
       });
       req.end();
     });

@@ -5,6 +5,9 @@
  */
 
 const https = require('https');
+const { retry, parseRetryAfter } = require('../../util/retry');
+
+const REQUEST_TIMEOUT_MS = 15000;
 
 // State DOT bid portals URL map
 const STATE_DOT_URLS = {
@@ -49,32 +52,50 @@ class StateDOTSearcher {
   }
 
   async _scrapeStateDOT(state, url, icp) {
-    // Use a lightweight HTTP fetch + HTML parsing approach
-    // For JS-rendered sites, Playwright would be used instead
-    return new Promise((resolve) => {
+    // Use a lightweight HTTP fetch + HTML parsing approach.
+    // For JS-rendered sites, Playwright would be used instead.
+    return retry(() => this._fetchStateDOTOnce(state, url, icp), {
+      maxAttempts: 3,
+      baseDelayMs: 1000,
+      maxDelayMs: 10000,
+      label: `${state} DOT`,
+    });
+  }
+
+  _fetchStateDOTOnce(state, url, icp) {
+    return new Promise((resolve, reject) => {
       const urlObj = new URL(url);
       const options = {
         hostname: urlObj.hostname,
         path: urlObj.pathname + urlObj.search,
         method: 'GET',
+        timeout: REQUEST_TIMEOUT_MS,
         headers: {
           'User-Agent': 'Mozilla/5.0 (compatible; RubberFormProspector/1.0)',
           'Accept': 'text/html'
-        },
-        timeout: 15000
+        }
       };
 
       const req = https.request(options, (res) => {
         let data = '';
         res.on('data', chunk => data += chunk);
         res.on('end', () => {
-          const results = this._parseHTMLForBids(data, state, url, icp);
-          resolve(results);
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            const err = new Error(`${state} DOT HTTP ${res.statusCode}`);
+            err.statusCode = res.statusCode;
+            err.retryAfterMs = parseRetryAfter(res.headers['retry-after']);
+            return reject(err);
+          }
+          resolve(this._parseHTMLForBids(data, state, url, icp));
         });
       });
 
-      req.on('error', () => resolve([]));
-      req.on('timeout', () => { req.destroy(); resolve([]); });
+      req.on('error', reject);
+      req.on('timeout', () => {
+        const err = new Error(`${state} DOT timed out after ${REQUEST_TIMEOUT_MS}ms`);
+        err.code = 'ETIMEDOUT';
+        req.destroy(err);
+      });
       req.end();
     });
   }
