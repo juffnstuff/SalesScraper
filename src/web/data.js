@@ -289,7 +289,13 @@ async function getTransactions(repId, reps) {
         if (estStatus === 'converted') return null;
         layer = estStatus; // 'open' or 'lost'
       } else {
-        // Sales orders: split by whether they had a quote
+        // Sales orders: the sync keeps every status (Pending Approval, Pending
+        // Fulfillment, Partially Fulfilled, Pending Billing, Billed, Closed,
+        // Cancelled) so the other services reading this DB see the full
+        // picture. For THIS app's sales map we only want the "shipped and
+        // billed" view — fulfilled orders and billed orders — excluding
+        // closed, cancelled, and orders still in the pending phase.
+        if (!isSalesOrderShippedOrBilled(r.status)) return null;
         layer = r.had_quote ? 'quoted' : 'direct';
       }
 
@@ -317,6 +323,29 @@ async function getTransactions(repId, reps) {
 
   // JSON fallback — return null to signal server.js should use existing file logic
   return null;
+}
+
+// Decide whether a sales order should appear on the Sales Map. The user
+// wants "shipped and billed" visible (Partially Fulfilled → Pending Billing
+// → Billed) and explicitly excluded: Closed, Cancelled, and orders still in
+// the pending phase (Pending Approval, Pending Fulfillment) that haven't
+// shipped yet.
+//
+// Status strings come from NetSuite via BUILTIN.DF(transaction.status) — they
+// are the human-readable display values. We match leniently on substrings so
+// a locale or version difference (e.g. "Cancelled" vs "Canceled") doesn't
+// silently hide rows.
+function isSalesOrderShippedOrBilled(status) {
+  const s = (status || '').toLowerCase().trim();
+  if (!s) return true; // legacy rows without a status populated — keep showing
+  if (s.includes('cancel')) return false;
+  if (s === 'closed') return false;
+  if (s === 'pending approval') return false;
+  if (s === 'pending fulfillment') return false;
+  // Everything else is a shipped/billed variant: "Partially Fulfilled",
+  // "Pending Billing/Partially Fulfilled", "Pending Billing", "Billed",
+  // "Fulfilled", etc.
+  return true;
 }
 
 function classifyEstimateStatusFromDb(status, nsStatus, lostReason) {
