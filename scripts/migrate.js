@@ -485,7 +485,7 @@ async function main() {
     console.log(`  → ${count} projects reclassified.\n`);
     console.log('  Done!\n');
     await pool.end();
-    return;
+    process.exit(0);
   }
 
   if (reset) {
@@ -523,7 +523,9 @@ async function main() {
   await pool.end();
 }
 
-main().catch(e => {
-  console.error('Migration failed:', e.message);
-  process.exit(1);
-});
+main()
+  .then(() => process.exit(0))
+  .catch(e => {
+    console.error('Migration failed:', e.message);
+    process.exit(1);
+  });
