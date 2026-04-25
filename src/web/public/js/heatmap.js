@@ -324,22 +324,32 @@ function projectMatchesFilter(p, needle) {
 }
 
 function renderSidebarList() {
-  if (!lastListType) return; // nothing picked yet
-
   const needle = (sidebarFilter || '').trim().toLowerCase();
-  visibleListProjects = needle
-    ? currentListProjects.filter(p => projectMatchesFilter(p, needle))
-    : currentListProjects.slice();
+  const isGlobalSearch = !!needle;
+
+  // With no active list AND no search term, there's nothing to render.
+  if (!lastListType && !isGlobalSearch) return;
+
+  // Global search filters across every loaded project, not just the active
+  // sidebar list — so users can find a match without first picking the
+  // right vertical/cluster. Clearing the box reverts to whatever list was
+  // last opened (preserved in currentListProjects).
+  const source = isGlobalSearch ? allProjects : currentListProjects;
+  visibleListProjects = isGlobalSearch
+    ? source.filter(p => projectMatchesFilter(p, needle))
+    : source.slice();
 
   // Header
   const title = document.getElementById('sidebarTitle');
   const stage = lastViewedStage;
   const color = STAGE_COLORS[stage] || '#1e293b';
-  const totalCount = currentListProjects.length;
+  const totalCount = source.length;
   const shownCount = visibleListProjects.length;
-  const countLabel = needle ? `${shownCount}/${totalCount}` : `${totalCount}`;
+  const countLabel = isGlobalSearch ? `${shownCount}/${totalCount}` : `${totalCount}`;
 
-  if (lastListType === 'cluster') {
+  if (isGlobalSearch) {
+    title.innerHTML = `<i class="bi bi-search" style="color:#1e293b"></i> Search results (${countLabel})`;
+  } else if (lastListType === 'cluster') {
     const label = STAGE_LABELS[stage] || stage;
     title.innerHTML = `<i class="bi bi-geo-alt-fill" style="color:${color}"></i> ${escapeHtml(currentListLocLabel)} &mdash; ${label} (${countLabel})`;
   } else {
@@ -352,7 +362,13 @@ function renderSidebarList() {
 
   // Match-count hint (only while filtering)
   const hint = document.getElementById('sidebarSearchCount');
-  if (hint) hint.textContent = needle ? `${shownCount} match${shownCount === 1 ? '' : 'es'} of ${totalCount}` : '';
+  if (hint) {
+    if (isGlobalSearch) {
+      hint.textContent = `${shownCount} match${shownCount === 1 ? '' : 'es'} across all ${totalCount} projects`;
+    } else {
+      hint.textContent = '';
+    }
+  }
 
   const sidebar = document.getElementById('sidebarContent');
 
@@ -411,7 +427,9 @@ function showProjectDetailByIndex(index) {
 function backToList() {
   // Re-render the existing list (preserves any active filter) rather than
   // rebuilding — so the user's search survives a detail-view round-trip.
-  if (lastListType && currentListProjects.length > 0) {
+  // Works for three cases: an active stat/cluster list, a pure global-search
+  // entry (no list clicked), or falling back to the last viewed stage.
+  if ((lastListType && currentListProjects.length > 0) || (sidebarFilter || '').trim()) {
     renderSidebarList();
   } else if (lastViewedStage !== null) {
     showProjectList(lastViewedStage);
