@@ -68,12 +68,19 @@ async function loadUsersAsync() {
 }
 
 // Passport serialization (shared by both strategies)
-passport.serializeUser((user, done) => done(null, user.username || user.id));
-passport.deserializeUser(async (identifier, done) => {
+passport.serializeUser((user, done) => {
+  done(null, { username: user.username, msAuthenticated: !!user.msAuthenticated });
+});
+passport.deserializeUser(async (sessionPayload, done) => {
   try {
+    // Back-compat: older sessions stored a bare username string.
+    const { username, msAuthenticated } = typeof sessionPayload === 'string'
+      ? { username: sessionPayload, msAuthenticated: false }
+      : sessionPayload;
     const users = await loadUsersAsync();
-    const user = users.find(u => u.username === identifier);
-    done(null, user || false);
+    const user = users.find(u => u.username === username);
+    if (!user) return done(null, false);
+    done(null, { ...user, msAuthenticated });
   } catch (e) {
     done(null, false);
   }
@@ -100,6 +107,11 @@ passport.use(new LocalStrategy(async (username, password, done) => {
 
 // ── MS365 / Azure AD strategy (optional) ──
 if (MS365_ENABLED) {
+  if (process.env.NODE_ENV === 'production' && !process.env.AUTH_REDIRECT_URI) {
+    console.error('AUTH_REDIRECT_URI required when MS365 is enabled in production');
+    process.exit(1);
+  }
+
   passport.use(new OIDCStrategy({
     identityMetadata: `https://login.microsoftonline.com/${process.env.MS365_TENANT_ID}/v2.0/.well-known/openid-configuration`,
     clientID: process.env.MS365_CLIENT_ID,
@@ -107,7 +119,7 @@ if (MS365_ENABLED) {
     responseType: 'code',
     responseMode: 'form_post',
     redirectUrl: process.env.AUTH_REDIRECT_URI || `http://localhost:${PORT}/auth/callback`,
-    allowHttpForRedirectUrl: true,
+    allowHttpForRedirectUrl: process.env.NODE_ENV !== 'production',
     scope: ['profile', 'email', 'openid'],
     passReqToCallback: false
   }, (iss, sub, profile, accessToken, refreshToken, done) => {
@@ -115,24 +127,19 @@ if (MS365_ENABLED) {
     if (!email.endsWith('@rubberform.com')) {
       return done(null, false, { message: 'Access restricted to RubberForm employees' });
     }
-    // Check if this email maps to a local user account
     const users = loadUsers();
     const localUser = users.find(u => u.email === email);
-    if (localUser) {
-      return done(null, {
-        username: localUser.username,
-        name: localUser.name,
-        email: localUser.email,
-        role: localUser.role,
-        repId: localUser.repId,
-        mustChangePassword: false
-      });
+    if (!localUser) {
+      return done(null, false, { message: `No local account mapped for ${email}. Contact your admin to be added.` });
     }
     return done(null, {
-      id: profile.oid,
-      name: profile.displayName,
-      email: email,
-      role: 'admin'
+      username: localUser.username,
+      name: localUser.name,
+      email: localUser.email,
+      role: localUser.role,
+      repId: localUser.repId,
+      mustChangePassword: false,
+      msAuthenticated: true
     });
   }));
 }
@@ -143,8 +150,8 @@ app.use(passport.session());
 // ── Auth middleware ──
 function ensureAuth(req, res, next) {
   if (req.isAuthenticated()) {
-    // Redirect to change-password if required (except for the change-password route itself)
-    if (req.user.mustChangePassword && req.path !== '/change-password' && !req.path.startsWith('/api/')) {
+    // MS365 users have no local password — skip the forced-change redirect.
+    if (req.user.mustChangePassword && !req.user.msAuthenticated && req.path !== '/change-password' && !req.path.startsWith('/api/')) {
       return res.redirect('/change-password');
     }
     return next();
@@ -227,18 +234,34 @@ app.post('/login', (req, res, next) => {
 
 if (MS365_ENABLED) {
   app.get('/auth/signin', passport.authenticate('azuread-openidconnect', { failureRedirect: '/login' }));
-  app.post('/auth/callback', passport.authenticate('azuread-openidconnect', { failureRedirect: '/login' }), (req, res) => {
-    res.redirect('/');
+  app.post('/auth/callback', (req, res, next) => {
+    passport.authenticate('azuread-openidconnect', (err, user, info) => {
+      if (err) return next(err);
+      if (!user) return res.redirect('/login?error=' + encodeURIComponent(info?.message || 'Microsoft sign-in failed'));
+      req.logIn(user, (err) => {
+        if (err) return next(err);
+        res.redirect('/');
+      });
+    })(req, res, next);
   });
 }
 
 app.get('/logout', (req, res) => {
-  req.logout(() => res.redirect('/login'));
+  const wasMs = !!req.user?.msAuthenticated;
+  req.logout(() => {
+    if (wasMs && MS365_ENABLED) {
+      const base = process.env.AUTH_REDIRECT_URI?.replace(/\/auth\/callback$/, '') || `http://localhost:${PORT}`;
+      const postLogout = encodeURIComponent(`${base}/login`);
+      return res.redirect(`https://login.microsoftonline.com/${process.env.MS365_TENANT_ID}/oauth2/v2.0/logout?post_logout_redirect_uri=${postLogout}`);
+    }
+    res.redirect('/login');
+  });
 });
 
 // ── Change Password ──
 app.get('/change-password', (req, res) => {
   if (!req.isAuthenticated()) return res.redirect('/login');
+  if (req.user.msAuthenticated) return res.redirect('/');
   res.render('change-password', {
     user: req.user,
     forced: req.user.mustChangePassword,
@@ -250,6 +273,7 @@ app.get('/change-password', (req, res) => {
 
 app.post('/change-password', async (req, res) => {
   if (!req.isAuthenticated()) return res.redirect('/login');
+  if (req.user.msAuthenticated) return res.redirect('/');
   const { currentPassword, newPassword, confirmPassword } = req.body;
 
   if (newPassword !== confirmPassword) {
