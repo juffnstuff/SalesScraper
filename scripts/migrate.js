@@ -463,6 +463,7 @@ async function main() {
     const count = await reclassifyVerticals();
     console.log(`  → ${count} projects reclassified.\n`);
     console.log('  Done!\n');
+    console.log('[migrate --reclassify] exit 0');
     pool.end().catch(() => {});
     process.exit(0);
   }
@@ -499,20 +500,20 @@ async function main() {
   console.log(`  → ${reclassified} projects reclassified.\n`);
 
   console.log('  Migration complete!\n');
+  // Exit synchronously instead of relying on .then() — pool.end() can hang on
+  // Railway/pg (keep-alive sockets that don't close), and Anthropic SDK + pg
+  // both leave keep-alive agents that hold the event loop open. Fire-and-forget
+  // the pool close and force-exit; the chain in railway.json's startCommand
+  // needs us to actually return so it can advance to --seed / --reclassify /
+  // server.js. The exit-line below is a deploy diagnostic — if it's missing
+  // from the deploy log, main() isn't resolving for some other reason.
+  console.log(`[migrate ${process.argv.slice(2).join(' ') || '(no flags)'}] exit 0`);
+  pool.end().catch(() => {});
+  process.exit(0);
 }
 
-// pool.end() can hang on Railway/pg (keep-alive sockets that don't close
-// gracefully) — so we never await it. Fire-and-forget the close, then
-// process.exit forces the chain to advance to the next migrate command and
-// eventually to server.js. All real queries above are already awaited, so
-// nothing's in flight when we exit.
-main()
-  .then(() => {
-    pool.end().catch(() => {});
-    process.exit(0);
-  })
-  .catch(e => {
-    console.error('Migration failed:', e.message);
-    pool.end().catch(() => {});
-    process.exit(1);
-  });
+main().catch(e => {
+  console.error(`[migrate ${process.argv.slice(2).join(' ') || '(no flags)'}] failed:`, e.message);
+  pool.end().catch(() => {});
+  process.exit(1);
+});
