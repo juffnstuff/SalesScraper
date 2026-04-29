@@ -463,7 +463,7 @@ async function main() {
     const count = await reclassifyVerticals();
     console.log(`  → ${count} projects reclassified.\n`);
     console.log('  Done!\n');
-    await pool.end();
+    pool.end().catch(() => {});
     process.exit(0);
   }
 
@@ -499,12 +499,20 @@ async function main() {
   console.log(`  → ${reclassified} projects reclassified.\n`);
 
   console.log('  Migration complete!\n');
-  await pool.end();
 }
 
+// pool.end() can hang on Railway/pg (keep-alive sockets that don't close
+// gracefully) — so we never await it. Fire-and-forget the close, then
+// process.exit forces the chain to advance to the next migrate command and
+// eventually to server.js. All real queries above are already awaited, so
+// nothing's in flight when we exit.
 main()
-  .then(() => process.exit(0))
+  .then(() => {
+    pool.end().catch(() => {});
+    process.exit(0);
+  })
   .catch(e => {
     console.error('Migration failed:', e.message);
+    pool.end().catch(() => {});
     process.exit(1);
   });
