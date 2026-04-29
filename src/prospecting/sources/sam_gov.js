@@ -4,6 +4,9 @@
  */
 
 const https = require('https');
+const { retry, parseRetryAfter } = require('../../util/retry');
+
+const REQUEST_TIMEOUT_MS = 15000;
 
 class SamGovSearcher {
   constructor() {
@@ -44,15 +47,24 @@ class SamGovSearcher {
     });
 
     if (naicsCodes) params.set('naics', naicsCodes);
+    const url = `${this.baseUrl}?${params.toString()}`;
 
+    return retry(() => this._fetchOpportunitiesOnce(url, keyword, states), {
+      maxAttempts: 3,
+      baseDelayMs: 1000,
+      maxDelayMs: 10000,
+      label: `SAM.gov "${keyword}"`,
+    });
+  }
+
+  _fetchOpportunitiesOnce(url, keyword, states) {
     return new Promise((resolve, reject) => {
-      const url = `${this.baseUrl}?${params.toString()}`;
       const urlObj = new URL(url);
-
       const options = {
         hostname: urlObj.hostname,
         path: urlObj.pathname + urlObj.search,
         method: 'GET',
+        timeout: REQUEST_TIMEOUT_MS,
         headers: { 'Accept': 'application/json' }
       };
 
@@ -60,17 +72,29 @@ class SamGovSearcher {
         let data = '';
         res.on('data', chunk => data += chunk);
         res.on('end', () => {
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            const err = new Error(`SAM.gov HTTP ${res.statusCode} for "${keyword}"`);
+            err.statusCode = res.statusCode;
+            err.retryAfterMs = parseRetryAfter(res.headers['retry-after']);
+            return reject(err);
+          }
           try {
             const parsed = JSON.parse(data);
             const opps = parsed.opportunitiesData || [];
             resolve(opps.map(opp => this._normalizeResult(opp, states)));
           } catch (e) {
-            resolve([]); // Graceful failure
+            // Parse failure on a 2xx is not worth retrying — response shape is unexpected.
+            reject(new Error(`SAM.gov parse error for "${keyword}": ${e.message}`));
           }
         });
       });
 
-      req.on('error', () => resolve([]));
+      req.on('error', reject);
+      req.on('timeout', () => {
+        const err = new Error(`SAM.gov timed out after ${REQUEST_TIMEOUT_MS}ms for "${keyword}"`);
+        err.code = 'ETIMEDOUT';
+        req.destroy(err);
+      });
       req.end();
     });
   }

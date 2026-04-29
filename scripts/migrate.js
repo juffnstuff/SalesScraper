@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS projects (
   verticals JSONB DEFAULT '["construction"]',
   project_status TEXT DEFAULT 'Unknown',
   notes TEXT DEFAULT '',
+  article_published_at DATE,
   scanned_at TIMESTAMPTZ DEFAULT NOW(),
   contractor_searched BOOLEAN DEFAULT FALSE,
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -52,6 +53,15 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE INDEX IF NOT EXISTS idx_projects_state ON projects(state);
 CREATE INDEX IF NOT EXISTS idx_projects_lifecycle ON projects(lifecycle_stage);
 CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(project_status);
+
+-- Ensure article_published_at exists on pre-existing DBs before the partial
+-- index below references it; CREATE TABLE IF NOT EXISTS above is a no-op on
+-- already-provisioned tables, so without this ALTER the index creation fails
+-- on production during the migrate --tables step.
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS article_published_at DATE;
+
+CREATE INDEX IF NOT EXISTS idx_projects_article_pub
+  ON projects(COALESCE(article_published_at, (scanned_at AT TIME ZONE 'UTC')::date));
 
 -- Contractors (linked to projects)
 CREATE TABLE IF NOT EXISTS contractors (
@@ -178,6 +188,7 @@ CREATE TABLE IF NOT EXISTS transaction_sync (
   status TEXT DEFAULT 'success',
   error_message TEXT DEFAULT ''
 );
+
 `;
 
 const DROP_TABLES = `
@@ -211,8 +222,8 @@ async function seedProjects() {
       const primaryStage = p.lifecycleStage || verticals[0] || 'construction';
 
       const result = await pool.query(`
-        INSERT INTO projects (project_name, project_type, city, state, estimated_value, bid_date, owner, general_contractor, source_url, source, relevance_score, lifecycle_stage, verticals, notes, scanned_at, contractor_searched)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+        INSERT INTO projects (project_name, project_type, city, state, estimated_value, bid_date, owner, general_contractor, source_url, source, relevance_score, lifecycle_stage, verticals, notes, scanned_at, contractor_searched, article_published_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
         ON CONFLICT (project_name, state) DO NOTHING
         RETURNING id
       `, [
@@ -220,7 +231,8 @@ async function seedProjects() {
         p.estimatedValue || 0, p.bidDate || '', p.owner || '', p.generalContractor || '',
         p.sourceUrl || '', p.source || 'construction_news_expanded', p.relevanceScore || 0,
         primaryStage, JSON.stringify(verticals), (p.notes || '').substring(0, 500),
-        p.scannedAt || new Date().toISOString(), p.contractorSearched || false
+        p.scannedAt || new Date().toISOString(), p.contractorSearched || false,
+        p.articlePublishedAt || null
       ]);
 
       if (result.rows.length > 0 && p.contractors && p.contractors.length > 0) {
@@ -368,6 +380,11 @@ async function reclassifyVerticals() {
   await pool.query(`
     ALTER TABLE projects ADD COLUMN IF NOT EXISTS verticals JSONB DEFAULT '["construction"]'
   `);
+  // Article publish date (captured during the weekly Claude scan; nullable for
+  // pre-feature rows, which fall back to scanned_at via COALESCE in queries).
+  await pool.query(`
+    ALTER TABLE projects ADD COLUMN IF NOT EXISTS article_published_at DATE
+  `);
 
   // Ensure lat/lng columns exist on transactions (for geocoding)
   await pool.query('ALTER TABLE transactions ADD COLUMN IF NOT EXISTS lat NUMERIC');
@@ -446,8 +463,9 @@ async function main() {
     const count = await reclassifyVerticals();
     console.log(`  → ${count} projects reclassified.\n`);
     console.log('  Done!\n');
-    await pool.end();
-    return;
+    console.log('[migrate --reclassify] exit 0');
+    pool.end().catch(() => {});
+    process.exit(0);
   }
 
   if (reset) {
@@ -482,10 +500,20 @@ async function main() {
   console.log(`  → ${reclassified} projects reclassified.\n`);
 
   console.log('  Migration complete!\n');
-  await pool.end();
+  // Exit synchronously instead of relying on .then() — pool.end() can hang on
+  // Railway/pg (keep-alive sockets that don't close), and Anthropic SDK + pg
+  // both leave keep-alive agents that hold the event loop open. Fire-and-forget
+  // the pool close and force-exit; the chain in railway.json's startCommand
+  // needs us to actually return so it can advance to --seed / --reclassify /
+  // server.js. The exit-line below is a deploy diagnostic — if it's missing
+  // from the deploy log, main() isn't resolving for some other reason.
+  console.log(`[migrate ${process.argv.slice(2).join(' ') || '(no flags)'}] exit 0`);
+  pool.end().catch(() => {});
+  process.exit(0);
 }
 
 main().catch(e => {
-  console.error('Migration failed:', e.message);
+  console.error(`[migrate ${process.argv.slice(2).join(' ') || '(no flags)'}] failed:`, e.message);
+  pool.end().catch(() => {});
   process.exit(1);
 });

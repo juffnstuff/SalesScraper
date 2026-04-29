@@ -1,10 +1,17 @@
 /**
  * NetSuite SuiteQL Client
  * Wraps NetSuite MCP tool calls for use in the prospecting pipeline.
- * When running standalone (non-MCP), uses REST API with token-based auth.
+ * When running standalone (non-MCP), uses REST API with OAuth 1.0 TBA auth.
  */
 
 const https = require('https');
+const crypto = require('crypto');
+const { retry, parseRetryAfter } = require('../util/retry');
+
+// Requests that exceed this without completing get aborted and surfaced as
+// ETIMEDOUT (retryable). 30s is well beyond a healthy SuiteQL round-trip but
+// short enough that a hung socket doesn't block a worker indefinitely.
+const REQUEST_TIMEOUT_MS = 30000;
 
 class NetSuiteClient {
   constructor(config = {}) {
@@ -15,23 +22,58 @@ class NetSuiteClient {
     this.tokenSecret = config.tokenSecret || process.env.NETSUITE_TOKEN_SECRET;
   }
 
+  // SuiteQL does not parameterize user input, so we guard the few values that
+  // get interpolated into query strings. Anything that fails these checks
+  // throws before the query is ever dispatched.
+  static _assertNumericId(value, field) {
+    if (value === null || value === undefined || value === '') {
+      throw new Error(`NetSuiteClient: ${field} is required`);
+    }
+    const s = String(value);
+    if (!/^-?\d+$/.test(s)) {
+      throw new Error(`NetSuiteClient: ${field} must be an integer (got ${JSON.stringify(value)})`);
+    }
+    return s;
+  }
+
+  static _assertIsoDate(value, field) {
+    if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      throw new Error(`NetSuiteClient: ${field} must match YYYY-MM-DD (got ${JSON.stringify(value)})`);
+    }
+    return value;
+  }
+
   /**
    * Run a SuiteQL query. In MCP mode this is a passthrough;
-   * standalone mode uses the REST API.
+   * standalone mode uses the REST API with OAuth 1.0 TBA auth.
+   *
+   * Transient failures (network, 5xx, 429, timeout) are retried with
+   * exponential backoff. Each attempt rebuilds the OAuth signature because
+   * the nonce and timestamp must be fresh — NetSuite rejects replays.
    */
   async runSuiteQL(query, description = '', limit = 1000, offset = 0) {
-    // When used from Claude Code MCP, the MCP tool handles execution.
-    // This method is for standalone/CLI execution via REST.
-    const url = `https://${this.accountId}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql?limit=${limit}&offset=${offset}`;
+    // NetSuite hostname convention: lowercase, underscore → dash.
+    // e.g. "1234567_SB1" → "1234567-sb1.suitetalk.api.netsuite.com".
+    const hostAccount = String(this.accountId || '').toLowerCase().replace(/_/g, '-');
+    const url = `https://${hostAccount}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql?limit=${limit}&offset=${offset}`;
+    const body = JSON.stringify({ q: query });
 
+    return retry(() => this._runSuiteQLOnce(url, body, description), {
+      maxAttempts: 5,
+      baseDelayMs: 1000,
+      maxDelayMs: 30000,
+      label: `NetSuite SuiteQL: ${description || 'unnamed'}`,
+    });
+  }
+
+  _runSuiteQLOnce(url, body, description) {
     return new Promise((resolve, reject) => {
-      const body = JSON.stringify({ q: query });
       const options = {
         method: 'POST',
+        timeout: REQUEST_TIMEOUT_MS,
         headers: {
           'Content-Type': 'application/json',
           'Prefer': 'transient',
-          // In production, use OAuth 1.0 TBA headers
           'Authorization': this._buildAuthHeader('POST', url)
         }
       };
@@ -40,20 +82,36 @@ class NetSuiteClient {
         let data = '';
         res.on('data', chunk => data += chunk);
         res.on('end', () => {
-          try {
-            const parsed = JSON.parse(data);
-            resolve({
-              items: parsed.items || [],
-              hasMore: parsed.hasMore || false,
-              totalResults: parsed.totalResults || 0
-            });
-          } catch (e) {
-            reject(new Error(`Failed to parse NetSuite response: ${e.message}`));
+          // Reject non-2xx loudly — previously errors silently returned [] via
+          // `parsed.items || []`, which hid broken OAuth signatures for months.
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            const err = new Error(
+              `NetSuite SuiteQL ${res.statusCode} for "${description}": ${data.slice(0, 500)}`
+            );
+            err.statusCode = res.statusCode;
+            err.retryAfterMs = parseRetryAfter(res.headers['retry-after']);
+            return reject(err);
           }
+          let parsed;
+          try {
+            parsed = JSON.parse(data);
+          } catch (e) {
+            return reject(new Error(`Failed to parse NetSuite response: ${e.message} — body: ${data.slice(0, 200)}`));
+          }
+          resolve({
+            items: parsed.items || [],
+            hasMore: parsed.hasMore || false,
+            totalResults: parsed.totalResults || 0
+          });
         });
       });
 
       req.on('error', reject);
+      req.on('timeout', () => {
+        const err = new Error(`NetSuite SuiteQL timed out after ${REQUEST_TIMEOUT_MS}ms for "${description}"`);
+        err.code = 'ETIMEDOUT';
+        req.destroy(err);
+      });
       req.write(body);
       req.end();
     });
@@ -81,16 +139,18 @@ class NetSuiteClient {
    * Get top customer categories by revenue for a sales rep
    */
   async getCustomerCategories(repId) {
+    const rep = NetSuiteClient._assertNumericId(repId, 'repId');
+    const lookback = NetSuiteClient._assertIsoDate(this._lookbackDate(), 'lookback');
     const result = await this.runSuiteQL(`
       SELECT customer.category, SUM(transaction.total) as revenue
       FROM transaction
       JOIN entity AS customer ON transaction.entity = customer.id
-      WHERE transaction.employee = ${repId}
+      WHERE transaction.employee = ${rep}
         AND transaction.type IN ('SalesOrd', 'Invoice')
-        AND transaction.tranDate >= TO_DATE('${this._lookbackDate()}', 'YYYY-MM-DD')
+        AND transaction.tranDate >= TO_DATE('${lookback}', 'YYYY-MM-DD')
       GROUP BY customer.category
       ORDER BY revenue DESC
-    `, `Customer categories for rep ${repId}`);
+    `, `Customer categories for rep ${rep}`);
     return result.items;
   }
 
@@ -98,6 +158,8 @@ class NetSuiteClient {
    * Get top products sold by a rep
    */
   async getTopProducts(repId) {
+    const rep = NetSuiteClient._assertNumericId(repId, 'repId');
+    const lookback = NetSuiteClient._assertIsoDate(this._lookbackDate(), 'lookback');
     const result = await this.runSuiteQL(`
       SELECT transactionLine.item, item.itemId, item.displayName,
              SUM(transactionLine.quantity) as qty,
@@ -105,12 +167,12 @@ class NetSuiteClient {
       FROM transactionLine
       JOIN transaction ON transactionLine.transaction = transaction.id
       JOIN item ON transactionLine.item = item.id
-      WHERE transaction.employee = ${repId}
+      WHERE transaction.employee = ${rep}
         AND transaction.type IN ('SalesOrd', 'Invoice')
-        AND transaction.tranDate >= TO_DATE('${this._lookbackDate()}', 'YYYY-MM-DD')
+        AND transaction.tranDate >= TO_DATE('${lookback}', 'YYYY-MM-DD')
       GROUP BY transactionLine.item, item.itemId, item.displayName
       ORDER BY revenue DESC
-    `, `Top products for rep ${repId}`);
+    `, `Top products for rep ${rep}`);
     return result.items;
   }
 
@@ -118,16 +180,18 @@ class NetSuiteClient {
    * Get top shipping states/geographies for a rep
    */
   async getTopGeographies(repId) {
+    const rep = NetSuiteClient._assertNumericId(repId, 'repId');
+    const lookback = NetSuiteClient._assertIsoDate(this._lookbackDate(), 'lookback');
     const result = await this.runSuiteQL(`
       SELECT transaction.shipState, COUNT(*) as orderCount, SUM(transaction.total) as revenue
       FROM transaction
-      WHERE transaction.employee = ${repId}
+      WHERE transaction.employee = ${rep}
         AND transaction.type IN ('SalesOrd', 'Invoice')
-        AND transaction.tranDate >= TO_DATE('${this._lookbackDate()}', 'YYYY-MM-DD')
+        AND transaction.tranDate >= TO_DATE('${lookback}', 'YYYY-MM-DD')
         AND transaction.shipState IS NOT NULL
       GROUP BY transaction.shipState
       ORDER BY revenue DESC
-    `, `Top geographies for rep ${repId}`);
+    `, `Top geographies for rep ${rep}`);
     return result.items;
   }
 
@@ -135,17 +199,19 @@ class NetSuiteClient {
    * Get deal size statistics for a rep
    */
   async getDealSizeStats(repId) {
+    const rep = NetSuiteClient._assertNumericId(repId, 'repId');
+    const lookback = NetSuiteClient._assertIsoDate(this._lookbackDate(), 'lookback');
     const result = await this.runSuiteQL(`
       SELECT AVG(transaction.total) as avgDeal,
              MAX(transaction.total) as maxDeal,
              MIN(transaction.total) as minDeal,
              COUNT(*) as dealCount
       FROM transaction
-      WHERE transaction.employee = ${repId}
+      WHERE transaction.employee = ${rep}
         AND transaction.type IN ('SalesOrd', 'Invoice')
-        AND transaction.tranDate >= TO_DATE('${this._lookbackDate()}', 'YYYY-MM-DD')
+        AND transaction.tranDate >= TO_DATE('${lookback}', 'YYYY-MM-DD')
         AND transaction.total > 0
-    `, `Deal size stats for rep ${repId}`);
+    `, `Deal size stats for rep ${rep}`);
     return result.items;
   }
 
@@ -153,15 +219,17 @@ class NetSuiteClient {
    * Get lost quotes (closed estimates with no linked SO)
    */
   async getLostQuotes(repId) {
+    const rep = NetSuiteClient._assertNumericId(repId, 'repId');
+    const lookback = NetSuiteClient._assertIsoDate(this._lookbackDate(), 'lookback');
     const result = await this.runSuiteQL(`
       SELECT transaction.memo, transaction.total, entity.entityId as companyName
       FROM transaction
       JOIN entity ON transaction.entity = entity.id
-      WHERE transaction.employee = ${repId}
+      WHERE transaction.employee = ${rep}
         AND transaction.type = 'Estimate'
-        AND transaction.tranDate >= TO_DATE('${this._lookbackDate()}', 'YYYY-MM-DD')
+        AND transaction.tranDate >= TO_DATE('${lookback}', 'YYYY-MM-DD')
       ORDER BY transaction.total DESC
-    `, `Lost quotes for rep ${repId}`);
+    `, `Lost quotes for rep ${rep}`);
     return result.items;
   }
 
@@ -170,8 +238,10 @@ class NetSuiteClient {
    * @param {Object} options - { repId (optional NetSuite employee ID), days (lookback days, default 730) }
    */
   async getSalesMapSales(options = {}) {
-    const lookback = this._lookbackDateFromDays(options.days || 730);
-    const repFilter = options.repId ? `AND transaction.employee = ${options.repId}` : '';
+    const lookback = NetSuiteClient._assertIsoDate(this._lookbackDateFromDays(options.days || 730), 'lookback');
+    const repFilter = options.repId
+      ? `AND transaction.employee = ${NetSuiteClient._assertNumericId(options.repId, 'repId')}`
+      : '';
 
     return this.runSuiteQLPaginated(`
       SELECT transaction.id, transaction.tranId, transaction.tranDate,
@@ -197,8 +267,10 @@ class NetSuiteClient {
    * @param {Object} options - { repId (optional NetSuite employee ID), days (lookback days, default 730) }
    */
   async getSalesMapEstimates(options = {}) {
-    const lookback = this._lookbackDateFromDays(options.days || 730);
-    const repFilter = options.repId ? `AND transaction.employee = ${options.repId}` : '';
+    const lookback = NetSuiteClient._assertIsoDate(this._lookbackDateFromDays(options.days || 730), 'lookback');
+    const repFilter = options.repId
+      ? `AND transaction.employee = ${NetSuiteClient._assertNumericId(options.repId, 'repId')}`
+      : '';
 
     return this.runSuiteQLPaginated(`
       SELECT transaction.id, transaction.tranId, transaction.tranDate,
@@ -226,8 +298,10 @@ class NetSuiteClient {
    * @param {string} sinceDate - ISO date string (YYYY-MM-DD)
    */
   async getSalesModifiedSince(sinceDate) {
+    const since = NetSuiteClient._assertIsoDate(sinceDate, 'sinceDate');
     return this.runSuiteQLPaginated(`
       SELECT transaction.id, transaction.tranId, transaction.tranDate,
+             transaction.shipDate,
              transaction.total, transaction.memo, transaction.employee,
              transaction.lastModifiedDate,
              BUILTIN.DF(transaction.entity) AS customerName,
@@ -240,9 +314,42 @@ class NetSuiteClient {
         LEFT JOIN transactionShippingAddress
           ON transaction.shippingAddress = transactionShippingAddress.nkey
       WHERE transaction.type IN ('SalesOrd', 'Invoice')
-        AND transaction.lastModifiedDate >= TO_DATE('${sinceDate}', 'YYYY-MM-DD')
+        AND transaction.lastModifiedDate >= TO_DATE('${since}', 'YYYY-MM-DD')
       ORDER BY transaction.lastModifiedDate DESC
-    `, 'Incremental sync: sales modified since ' + sinceDate);
+    `, 'Incremental sync: sales modified since ' + since);
+  }
+
+  /**
+   * Pull every currently-open sales order (Pending Approval + Pending
+   * Fulfillment), regardless of when it was last modified. The incremental
+   * sync keys on lastModifiedDate, so an SO created weeks ago and left
+   * sitting in Pending Approval never enters the sliding window and goes
+   * missing from the DB. This safety-net query catches those rows on every
+   * sync run.
+   *
+   * Filters on the raw transaction.status values ('SalesOrd:A' = Pending
+   * Approval, 'SalesOrd:B' = Pending Fulfillment) — BUILTIN.DF isn't
+   * reliable inside WHERE clauses across NetSuite SuiteQL versions.
+   */
+  async getOpenSalesOrders() {
+    return this.runSuiteQLPaginated(`
+      SELECT transaction.id, transaction.tranId, transaction.tranDate,
+             transaction.shipDate,
+             transaction.total, transaction.memo, transaction.employee,
+             transaction.lastModifiedDate,
+             BUILTIN.DF(transaction.entity) AS customerName,
+             BUILTIN.DF(transaction.status) AS statusDisplay,
+             transactionShippingAddress.city AS shipCity,
+             transactionShippingAddress.state AS shipState,
+             transactionShippingAddress.zip AS shipZip,
+             transactionShippingAddress.addr1 AS shipStreet
+      FROM transaction
+        LEFT JOIN transactionShippingAddress
+          ON transaction.shippingAddress = transactionShippingAddress.nkey
+      WHERE transaction.type = 'SalesOrd'
+        AND transaction.status IN ('SalesOrd:A', 'SalesOrd:B')
+      ORDER BY transaction.tranDate DESC
+    `, 'Open sales orders (Pending Approval + Pending Fulfillment)');
   }
 
   /**
@@ -251,6 +358,7 @@ class NetSuiteClient {
    * @param {string} sinceDate - ISO date string (YYYY-MM-DD)
    */
   async getEstimatesModifiedSince(sinceDate) {
+    const since = NetSuiteClient._assertIsoDate(sinceDate, 'sinceDate');
     return this.runSuiteQLPaginated(`
       SELECT transaction.id, transaction.tranId, transaction.tranDate,
              transaction.total, transaction.memo, transaction.employee,
@@ -265,9 +373,9 @@ class NetSuiteClient {
         LEFT JOIN transactionShippingAddress
           ON transaction.shippingAddress = transactionShippingAddress.nkey
       WHERE transaction.type = 'Estimate'
-        AND transaction.lastModifiedDate >= TO_DATE('${sinceDate}', 'YYYY-MM-DD')
+        AND transaction.lastModifiedDate >= TO_DATE('${since}', 'YYYY-MM-DD')
       ORDER BY transaction.lastModifiedDate DESC
-    `, 'Incremental sync: estimates modified since ' + sinceDate);
+    `, 'Incremental sync: estimates modified since ' + since);
   }
 
   /**
@@ -291,7 +399,7 @@ class NetSuiteClient {
    * @param {number} days - lookback days (default 730)
    */
   async getLineItemsWithPartCodes(tranType, days = 730) {
-    const lookback = this._lookbackDateFromDays(days);
+    const lookback = NetSuiteClient._assertIsoDate(this._lookbackDateFromDays(days), 'lookback');
     const typeFilter = tranType === 'Estimate' ? "= 'Estimate'" : "IN ('SalesOrd', 'Invoice')";
 
     return this.runSuiteQLPaginated(`
@@ -327,10 +435,61 @@ class NetSuiteClient {
     return d.toISOString().split('T')[0];
   }
 
-  _buildAuthHeader(method, url) {
-    // Placeholder for OAuth 1.0 TBA signature
-    // In production, implement proper OAuth 1.0 signing
-    return `OAuth realm="${this.accountId}", oauth_consumer_key="${this.consumerKey}", oauth_token="${this.tokenId}", oauth_signature_method="HMAC-SHA256", oauth_timestamp="${Math.floor(Date.now()/1000)}", oauth_nonce="${Math.random().toString(36).slice(2)}", oauth_version="1.0", oauth_signature="PLACEHOLDER"`;
+  /**
+   * Build an OAuth 1.0 TBA Authorization header for NetSuite.
+   * HMAC-SHA256 signature per RFC 5849 with RFC 3986 encoding.
+   *
+   * NetSuite conventions applied:
+   *   - Realm = account ID uppercased, underscores preserved (e.g. "1234567_SB1").
+   *   - Hostname uses lowercased accountId with underscores → dashes; that happens
+   *     in runSuiteQL before calling here, so the URL arg here is already normalized.
+   *   - Query-string params (limit, offset) are included in the signature base string;
+   *     the JSON body is NOT (NetSuite follows the "non-form-encoded body" convention).
+   */
+  _buildAuthHeader(method, urlStr) {
+    if (!this.consumerKey || !this.consumerSecret || !this.tokenId || !this.tokenSecret) {
+      throw new Error('NetSuite TBA credentials incomplete — need consumerKey/Secret + tokenId/Secret');
+    }
+
+    // RFC 3986 percent-encoding (stricter than encodeURIComponent, which leaves !*'() alone).
+    const enc = (s) => encodeURIComponent(String(s))
+      .replace(/[!*'()]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+
+    const url = new URL(urlStr);
+    const baseUrl = `${url.protocol}//${url.host}${url.pathname}`;
+
+    const queryParams = {};
+    for (const [k, v] of url.searchParams) queryParams[k] = v;
+
+    const oauthParams = {
+      oauth_consumer_key: this.consumerKey,
+      oauth_nonce: crypto.randomBytes(16).toString('hex'),
+      oauth_signature_method: 'HMAC-SHA256',
+      oauth_timestamp: String(Math.floor(Date.now() / 1000)),
+      oauth_token: this.tokenId,
+      oauth_version: '1.0'
+    };
+
+    // Signature base string: METHOD & encoded(URL) & encoded(sorted params joined by &).
+    // Params are encoded, then sorted by encoded key (ties by encoded value).
+    const allParams = { ...queryParams, ...oauthParams };
+    const encodedPairs = Object.keys(allParams)
+      .map(k => [enc(k), enc(allParams[k])])
+      .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0));
+    const paramString = encodedPairs.map(([k, v]) => `${k}=${v}`).join('&');
+
+    const baseString = `${method.toUpperCase()}&${enc(baseUrl)}&${enc(paramString)}`;
+    const signingKey = `${enc(this.consumerSecret)}&${enc(this.tokenSecret)}`;
+    const signature = crypto.createHmac('sha256', signingKey).update(baseString).digest('base64');
+
+    // Authorization header. Only oauth_* params (plus realm + signature) belong here —
+    // the query params go in the URL, not the header.
+    const realm = String(this.accountId || '').toUpperCase();
+    const headerParams = { ...oauthParams, oauth_signature: signature };
+    const headerFields = Object.keys(headerParams)
+      .sort()
+      .map(k => `${enc(k)}="${enc(headerParams[k])}"`);
+    return `OAuth realm="${enc(realm)}", ${headerFields.join(', ')}`;
   }
 }
 

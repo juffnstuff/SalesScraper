@@ -289,8 +289,18 @@ async function getTransactions(repId, reps) {
         if (estStatus === 'converted') return null;
         layer = estStatus; // 'open' or 'lost'
       } else {
-        // Sales orders: split by whether they had a quote
-        layer = r.had_quote ? 'quoted' : 'direct';
+        // Sales orders: the sync keeps every status so other services reading
+        // this DB see the full picture. For the sales map we show three
+        // buckets — shipped (billed/fulfilled, split into quoted/direct),
+        // pending (Pending Approval + Pending Fulfillment, its own togglable
+        // layer), and hidden (Closed / Cancelled, never on the map).
+        const soBucket = classifySalesOrderForMap(r.status);
+        if (soBucket === 'hidden') return null;
+        if (soBucket === 'pending') {
+          layer = 'pending';
+        } else {
+          layer = r.had_quote ? 'quoted' : 'direct';
+        }
       }
 
       return {
@@ -317,6 +327,28 @@ async function getTransactions(repId, reps) {
 
   // JSON fallback — return null to signal server.js should use existing file logic
   return null;
+}
+
+// Decide what layer a sales order belongs to on the Sales Map. The user's
+// buckets:
+//   - 'pending' : Pending Approval / Pending Fulfillment (not shipped yet;
+//                 shown on the map under its own filterable layer).
+//   - 'hidden'  : Closed / Cancelled — never shown on the map.
+//   - 'shipped' : Everything else (Partially Fulfilled, Pending Billing,
+//                 Billed, Fulfilled, legacy rows with blank status). These
+//                 get split further by had_quote into 'quoted' vs 'direct'.
+//
+// Status strings come from NetSuite via BUILTIN.DF(transaction.status) — the
+// human-readable display values. Matching is case-insensitive and lenient
+// so a locale difference ("Cancelled" vs "Canceled") doesn't silently drop
+// rows.
+function classifySalesOrderForMap(status) {
+  const s = (status || '').toLowerCase().trim();
+  if (!s) return 'shipped'; // legacy rows without a populated status — keep visible
+  if (s.includes('cancel')) return 'hidden';
+  if (s === 'closed') return 'hidden';
+  if (s === 'pending approval' || s === 'pending fulfillment') return 'pending';
+  return 'shipped';
 }
 
 function classifyEstimateStatusFromDb(status, nsStatus, lostReason) {

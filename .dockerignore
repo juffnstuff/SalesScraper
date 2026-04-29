@@ -1,0 +1,29 @@
+# Exclude things from the build context that either aren't needed at
+# runtime or that would leak secrets / bloat the image.
+
+# VCS + CI
+.git
+.gitignore
+.github
+
+# Dev/editor state
+.env
+.env.*
+.vscode
+.idea
+.DS_Store
+
+# Installed deps (npm ci inside the image re-installs from lockfile)
+node_modules
+
+# Run-time artifacts from local dev
+logs/
+*.log
+/tmp
+
+# Claude planning / session output — never belongs in the image
+.claude
+
+# Developer docs not needed at runtime
+CLAUDE.md
+README.md

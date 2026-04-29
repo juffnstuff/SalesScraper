@@ -3,7 +3,20 @@
  * Express app with MS365 authentication and dashboard UI.
  */
 
+console.log('[server.js] starting...');
+
 require('dotenv').config();
+
+// Long-running server: log and keep running on unhandledRejection so a single
+// stray rejection doesn't take down the whole service. Still exit on
+// uncaughtException — process state is undefined after a sync throw escapes.
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason instanceof Error ? reason.stack : reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err.stack || err);
+  process.exit(1);
+});
 
 const express = require('express');
 const session = require('express-session');
@@ -57,12 +70,19 @@ async function loadUsersAsync() {
 }
 
 // Passport serialization (shared by both strategies)
-passport.serializeUser((user, done) => done(null, user.username || user.id));
-passport.deserializeUser(async (identifier, done) => {
+passport.serializeUser((user, done) => {
+  done(null, { username: user.username, msAuthenticated: !!user.msAuthenticated });
+});
+passport.deserializeUser(async (sessionPayload, done) => {
   try {
+    // Back-compat: older sessions stored a bare username string.
+    const { username, msAuthenticated } = typeof sessionPayload === 'string'
+      ? { username: sessionPayload, msAuthenticated: false }
+      : sessionPayload;
     const users = await loadUsersAsync();
-    const user = users.find(u => u.username === identifier);
-    done(null, user || false);
+    const user = users.find(u => u.username === username);
+    if (!user) return done(null, false);
+    done(null, { ...user, msAuthenticated });
   } catch (e) {
     done(null, false);
   }
@@ -104,24 +124,19 @@ if (MS365_ENABLED) {
     if (!email.endsWith('@rubberform.com')) {
       return done(null, false, { message: 'Access restricted to RubberForm employees' });
     }
-    // Check if this email maps to a local user account
     const users = loadUsers();
     const localUser = users.find(u => u.email === email);
-    if (localUser) {
-      return done(null, {
-        username: localUser.username,
-        name: localUser.name,
-        email: localUser.email,
-        role: localUser.role,
-        repId: localUser.repId,
-        mustChangePassword: false
-      });
+    if (!localUser) {
+      return done(null, false, { message: `No local account mapped for ${email}. Contact your admin to be added.` });
     }
     return done(null, {
-      id: profile.oid,
-      name: profile.displayName,
-      email: email,
-      role: 'admin'
+      username: localUser.username,
+      name: localUser.name,
+      email: localUser.email,
+      role: localUser.role,
+      repId: localUser.repId,
+      mustChangePassword: false,
+      msAuthenticated: true
     });
   }));
 }
@@ -132,8 +147,8 @@ app.use(passport.session());
 // ── Auth middleware ──
 function ensureAuth(req, res, next) {
   if (req.isAuthenticated()) {
-    // Redirect to change-password if required (except for the change-password route itself)
-    if (req.user.mustChangePassword && req.path !== '/change-password' && !req.path.startsWith('/api/')) {
+    // MS365 users have no local password — skip the forced-change redirect.
+    if (req.user.mustChangePassword && !req.user.msAuthenticated && req.path !== '/change-password' && !req.path.startsWith('/api/')) {
       return res.redirect('/change-password');
     }
     return next();
@@ -216,18 +231,34 @@ app.post('/login', (req, res, next) => {
 
 if (MS365_ENABLED) {
   app.get('/auth/signin', passport.authenticate('azuread-openidconnect', { failureRedirect: '/login' }));
-  app.post('/auth/callback', passport.authenticate('azuread-openidconnect', { failureRedirect: '/login' }), (req, res) => {
-    res.redirect('/');
+  app.post('/auth/callback', (req, res, next) => {
+    passport.authenticate('azuread-openidconnect', (err, user, info) => {
+      if (err) return next(err);
+      if (!user) return res.redirect('/login?error=' + encodeURIComponent(info?.message || 'Microsoft sign-in failed'));
+      req.logIn(user, (err) => {
+        if (err) return next(err);
+        res.redirect('/');
+      });
+    })(req, res, next);
   });
 }
 
 app.get('/logout', (req, res) => {
-  req.logout(() => res.redirect('/login'));
+  const wasMs = !!req.user?.msAuthenticated;
+  req.logout(() => {
+    if (wasMs && MS365_ENABLED) {
+      const base = process.env.AUTH_REDIRECT_URI?.replace(/\/auth\/callback$/, '') || `http://localhost:${PORT}`;
+      const postLogout = encodeURIComponent(`${base}/login`);
+      return res.redirect(`https://login.microsoftonline.com/${process.env.MS365_TENANT_ID}/oauth2/v2.0/logout?post_logout_redirect_uri=${postLogout}`);
+    }
+    res.redirect('/login');
+  });
 });
 
 // ── Change Password ──
 app.get('/change-password', (req, res) => {
   if (!req.isAuthenticated()) return res.redirect('/login');
+  if (req.user.msAuthenticated) return res.redirect('/');
   res.render('change-password', {
     user: req.user,
     forced: req.user.mustChangePassword,
@@ -239,6 +270,7 @@ app.get('/change-password', (req, res) => {
 
 app.post('/change-password', async (req, res) => {
   if (!req.isAuthenticated()) return res.redirect('/login');
+  if (req.user.msAuthenticated) return res.redirect('/');
   const { currentPassword, newPassword, confirmPassword } = req.body;
 
   if (newPassword !== confirmPassword) {
@@ -625,6 +657,7 @@ app.post('/api/netsuite-sync', ensureAuth, async (req, res) => {
       sinceDate: result.sinceDate,
       sales: result.sales,
       estimates: result.estimates,
+      openSales: result.openSales,
       durationMs: result.durationMs
     });
   } catch (e) {
@@ -1244,20 +1277,15 @@ function startNightlyScanScheduler() {
     console.log(`  Next nightly run in ${hoursUntil}h`);
 
     setTimeout(async () => {
-      // Run heatmap scan
-      await runNightlyScan().catch(e => console.error('[Nightly] Heatmap scan error:', e.message));
-
-      // Run NetSuite sync
-      if (process.env.NETSUITE_ACCOUNT_ID) {
-        console.log('[Nightly] Starting NetSuite sync...');
-        try {
-          const result = await netsuiteSync.runSync();
-          const totalFetched = result.sales.fetched + result.estimates.fetched;
-          const totalUpserted = result.sales.upserted + result.estimates.upserted;
-          console.log(`[Nightly] NetSuite sync: ${totalFetched} fetched, ${totalUpserted} upserted`);
-        } catch (e) {
-          console.error('[Nightly] NetSuite sync error:', e.message);
-        }
+      // Claude web_search is the only expensive part of this job. Scope it to
+      // Wednesdays — other nights the internal housekeeping below still runs.
+      // NetSuite sales/estimate sync has moved to the workday 7am/2pm Mon–Fri
+      // scheduler (startWorkdayNetSuiteScheduler) and no longer runs here.
+      const isWednesday = new Date().getUTCDay() === 3; // 2am EST = 07:00 UTC; UTC day matches EST day at that hour
+      if (isWednesday) {
+        await runNightlyScan().catch(e => console.error('[Weekly] Heatmap scan error:', e.message));
+      } else {
+        console.log('[Nightly] Skipping Claude heatmap scan (runs weekly on Wednesdays)');
       }
 
       // Re-scrape line items with actual part codes from NetSuite
@@ -1341,7 +1369,57 @@ function startNightlyScanScheduler() {
   }
 
   scheduleNext();
-  console.log('  Nightly scan + sync scheduled: 2:00am EST daily');
+  console.log('  Nightly 2am EST: part-code re-scrape + geocoding (Wed adds Claude heatmap scan)');
+}
+
+// ── Workday NetSuite scheduler: 7am + 2pm EST, Mon–Fri ──
+// Pulls sales/estimate updates so heatmap and salesmap stay fresh during
+// business hours. Weekends are skipped (no NetSuite activity to capture).
+function startWorkdayNetSuiteScheduler() {
+  function msUntilNextUtcHour(hour) {
+    const now = new Date();
+    const target = new Date(now);
+    target.setUTCHours(hour, 0, 0, 0);
+    if (target <= now) target.setUTCDate(target.getUTCDate() + 1);
+    return target.getTime() - now.getTime();
+  }
+
+  async function runJob(label) {
+    if (!process.env.NETSUITE_ACCOUNT_ID) {
+      console.log(`[${label}] Skipping — NETSUITE_ACCOUNT_ID not set`);
+      return;
+    }
+    console.log(`[${label}] Starting NetSuite sync...`);
+    try {
+      const result = await netsuiteSync.runSync();
+      const txFetched = result.sales.fetched + result.estimates.fetched;
+      const txUpserted = result.sales.upserted + result.estimates.upserted;
+      console.log(`[${label}] Done: ${txFetched} txn fetched / ${txUpserted} upserted; ${result.openSales.upserted} open SOs refreshed`);
+    } catch (e) {
+      console.error(`[${label}] NetSuite sync error:`, e.message);
+    }
+  }
+
+  function scheduleAt(hourUTC, label) {
+    const delay = msUntilNextUtcHour(hourUTC);
+    console.log(`  Next ${label} run in ${(delay / 3600000).toFixed(1)}h`);
+    setTimeout(async () => {
+      const day = new Date().getUTCDay(); // 1=Mon … 5=Fri (2am EST window aside, these UTC hours still fall on the local weekday)
+      if (day >= 1 && day <= 5) {
+        await runJob(label);
+      } else {
+        console.log(`[${label}] Skipping — weekend (UTC day ${day})`);
+      }
+      scheduleAt(hourUTC, label); // reschedule for next occurrence (24h later)
+    }, delay);
+  }
+
+  // 7am EST = 12:00 UTC (standard) / 11:00 UTC (daylight) — kept as fixed UTC
+  // to match the existing 2am-EST scheduler's convention; DST drift is
+  // accepted.
+  scheduleAt(12, 'Morning NetSuite sync (7am EST)');
+  scheduleAt(19, 'Afternoon NetSuite sync (2pm EST)');
+  console.log('  Workday NetSuite sync (sales+estimates): 7am & 2pm EST, Mon–Fri');
 }
 
 // ── ICP detail ──
@@ -1358,10 +1436,17 @@ app.get('/icp/:repId', ensureAuth, (req, res) => {
 });
 
 // ── Start server ──
+console.log(`[server.js] modules loaded, calling app.listen on port ${PORT}`);
 app.listen(PORT, async () => {
   console.log(`\n  🔧 RubberForm Prospecting Engine`);
   console.log(`  📊 Dashboard: http://localhost:${PORT}`);
-  console.log(`  🔐 Auth: Local${MS365_ENABLED ? ' + MS365 (Azure AD)' : ''}`);
+  console.log(`  🌎 NODE_ENV: ${process.env.NODE_ENV || '(unset)'}`);
+  if (MS365_ENABLED) {
+    const redirectUrl = process.env.AUTH_REDIRECT_URI || `http://localhost:${PORT}/auth/callback`;
+    console.log(`  🔐 Auth: Local + MS365 (redirect: ${redirectUrl})`);
+  } else {
+    console.log(`  🔐 Auth: Local (MS365 disabled — set MS365_TENANT_ID + MS365_CLIENT_ID to enable)`);
+  }
 
   // Check database connection
   const db = require('./db');
@@ -1376,6 +1461,9 @@ app.listen(PORT, async () => {
 
   // Schedule nightly heatmap scan (2-4am EST)
   startNightlyScanScheduler();
+
+  // Schedule twice-daily NetSuite sync (Mon–Fri)
+  startWorkdayNetSuiteScheduler();
 
   // Run background NetSuite incremental sync if DB is available and NetSuite is configured
   if (await db.isReady() && process.env.NETSUITE_ACCOUNT_ID) {
@@ -1400,7 +1488,7 @@ async function runStartupNetSuiteSync() {
     const result = await netsuiteSync.runSync();
     const totalFetched = result.sales.fetched + result.estimates.fetched;
     const totalUpserted = result.sales.upserted + result.estimates.upserted;
-    console.log(`  NetSuite sync complete: ${totalFetched} fetched, ${totalUpserted} upserted in ${result.durationMs}ms`);
+    console.log(`  NetSuite sync complete: ${totalFetched} txn fetched, ${totalUpserted} upserted; ${result.openSales.upserted} open SOs refreshed in ${result.durationMs}ms`);
   } catch (e) {
     console.error('  NetSuite startup sync failed:', e.message);
   }

@@ -35,8 +35,12 @@
       <select class="form-select form-select-sm" id="timeRange" style="width: auto;">
         <option value="0" selected>All Projects</option>
         <option value="1">Scanned Today</option>
-        <option value="7">Scanned This Week</option>
-        <option value="30">Scanned This Month</option>
+        <option value="7">Last Week</option>
+        <option value="30">Last Month</option>
+        <option value="90">Last 3 Months</option>
+        <option value="180">Last 6 Months</option>
+        <option value="365">Last 12 Months</option>
+        <option value="730">Last 24 Months</option>
       </select>
     </div>
   </div>
@@ -79,6 +83,13 @@
         <button class="btn btn-sm btn-outline-secondary d-none" id="backToListBtn" onclick="backToList()">
           <i class="bi bi-arrow-left"></i> Back
         </button>
+      </div>
+      <div class="px-3 pt-2 pb-1 border-bottom" id="sidebarSearchWrap">
+        <div class="input-group input-group-sm">
+          <span class="input-group-text bg-white"><i class="bi bi-search text-muted"></i></span>
+          <input type="search" class="form-control" id="sidebarSearch" placeholder="Search all projects..." autocomplete="off" aria-label="Search projects">
+        </div>
+        <small class="text-muted d-block mt-1" id="sidebarSearchCount" style="font-size:0.7rem;"></small>
       </div>
       <div class="card-body p-0" id="sidebarContent">
         <div class="text-center text-muted py-5">
