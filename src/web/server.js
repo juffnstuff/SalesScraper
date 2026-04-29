@@ -107,11 +107,6 @@ passport.use(new LocalStrategy(async (username, password, done) => {
 
 // ── MS365 / Azure AD strategy (optional) ──
 if (MS365_ENABLED) {
-  if (process.env.NODE_ENV === 'production' && !process.env.AUTH_REDIRECT_URI) {
-    console.error('AUTH_REDIRECT_URI required when MS365 is enabled in production');
-    process.exit(1);
-  }
-
   passport.use(new OIDCStrategy({
     identityMetadata: `https://login.microsoftonline.com/${process.env.MS365_TENANT_ID}/v2.0/.well-known/openid-configuration`,
     clientID: process.env.MS365_CLIENT_ID,
@@ -119,7 +114,7 @@ if (MS365_ENABLED) {
     responseType: 'code',
     responseMode: 'form_post',
     redirectUrl: process.env.AUTH_REDIRECT_URI || `http://localhost:${PORT}/auth/callback`,
-    allowHttpForRedirectUrl: process.env.NODE_ENV !== 'production',
+    allowHttpForRedirectUrl: true,
     scope: ['profile', 'email', 'openid'],
     passReqToCallback: false
   }, (iss, sub, profile, accessToken, refreshToken, done) => {
@@ -1442,7 +1437,13 @@ app.get('/icp/:repId', ensureAuth, (req, res) => {
 app.listen(PORT, async () => {
   console.log(`\n  🔧 RubberForm Prospecting Engine`);
   console.log(`  📊 Dashboard: http://localhost:${PORT}`);
-  console.log(`  🔐 Auth: Local${MS365_ENABLED ? ' + MS365 (Azure AD)' : ''}`);
+  console.log(`  🌎 NODE_ENV: ${process.env.NODE_ENV || '(unset)'}`);
+  if (MS365_ENABLED) {
+    const redirectUrl = process.env.AUTH_REDIRECT_URI || `http://localhost:${PORT}/auth/callback`;
+    console.log(`  🔐 Auth: Local + MS365 (redirect: ${redirectUrl})`);
+  } else {
+    console.log(`  🔐 Auth: Local (MS365 disabled — set MS365_TENANT_ID + MS365_CLIENT_ID to enable)`);
+  }
 
   // Check database connection
   const db = require('./db');
