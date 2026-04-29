@@ -3,6 +3,8 @@
  * Express app with MS365 authentication and dashboard UI.
  */
 
+console.log('[server.js] starting...');
+
 require('dotenv').config();
 
 // Long-running server: log and keep running on unhandledRejection so a single
@@ -1434,6 +1436,7 @@ app.get('/icp/:repId', ensureAuth, (req, res) => {
 });
 
 // ── Start server ──
+console.log(`[server.js] modules loaded, calling app.listen on port ${PORT}`);
 app.listen(PORT, async () => {
   console.log(`\n  🔧 RubberForm Prospecting Engine`);
   console.log(`  📊 Dashboard: http://localhost:${PORT}`);
