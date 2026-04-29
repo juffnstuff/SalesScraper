@@ -661,7 +661,6 @@ app.post('/api/netsuite-sync', ensureAuth, async (req, res) => {
       sales: result.sales,
       estimates: result.estimates,
       openSales: result.openSales,
-      inventory: result.inventory,
       durationMs: result.durationMs
     });
   } catch (e) {
@@ -1283,9 +1282,8 @@ function startNightlyScanScheduler() {
     setTimeout(async () => {
       // Claude web_search is the only expensive part of this job. Scope it to
       // Wednesdays — other nights the internal housekeeping below still runs.
-      // NetSuite sales/estimate/inventory sync has moved to the workday 7am/2pm
-      // Mon–Fri scheduler (startWorkdayNetSuiteScheduler) and no longer runs
-      // here.
+      // NetSuite sales/estimate sync has moved to the workday 7am/2pm Mon–Fri
+      // scheduler (startWorkdayNetSuiteScheduler) and no longer runs here.
       const isWednesday = new Date().getUTCDay() === 3; // 2am EST = 07:00 UTC; UTC day matches EST day at that hour
       if (isWednesday) {
         await runNightlyScan().catch(e => console.error('[Weekly] Heatmap scan error:', e.message));
@@ -1378,9 +1376,8 @@ function startNightlyScanScheduler() {
 }
 
 // ── Workday NetSuite scheduler: 7am + 2pm EST, Mon–Fri ──
-// Pulls sales/estimate updates + a full inventory snapshot from NetSuite so
-// the other services reading this database stay fresh during business hours.
-// Weekends are skipped (no NetSuite activity to capture).
+// Pulls sales/estimate updates so heatmap and salesmap stay fresh during
+// business hours. Weekends are skipped (no NetSuite activity to capture).
 function startWorkdayNetSuiteScheduler() {
   function msUntilNextUtcHour(hour) {
     const now = new Date();
@@ -1395,12 +1392,12 @@ function startWorkdayNetSuiteScheduler() {
       console.log(`[${label}] Skipping — NETSUITE_ACCOUNT_ID not set`);
       return;
     }
-    console.log(`[${label}] Starting NetSuite sync + inventory refresh...`);
+    console.log(`[${label}] Starting NetSuite sync...`);
     try {
       const result = await netsuiteSync.runSync();
       const txFetched = result.sales.fetched + result.estimates.fetched;
       const txUpserted = result.sales.upserted + result.estimates.upserted;
-      console.log(`[${label}] Done: ${txFetched} txn fetched / ${txUpserted} upserted; ${result.openSales.upserted} open SOs refreshed; ${result.inventory.upserted}/${result.inventory.fetched} inventory items refreshed`);
+      console.log(`[${label}] Done: ${txFetched} txn fetched / ${txUpserted} upserted; ${result.openSales.upserted} open SOs refreshed`);
     } catch (e) {
       console.error(`[${label}] NetSuite sync error:`, e.message);
     }
@@ -1425,7 +1422,7 @@ function startWorkdayNetSuiteScheduler() {
   // accepted.
   scheduleAt(12, 'Morning NetSuite sync (7am EST)');
   scheduleAt(19, 'Afternoon NetSuite sync (2pm EST)');
-  console.log('  Workday NetSuite sync (sales+estimates+inventory): 7am & 2pm EST, Mon–Fri');
+  console.log('  Workday NetSuite sync (sales+estimates): 7am & 2pm EST, Mon–Fri');
 }
 
 // ── ICP detail ──
@@ -1461,7 +1458,7 @@ app.listen(PORT, async () => {
   // Schedule nightly heatmap scan (2-4am EST)
   startNightlyScanScheduler();
 
-  // Schedule twice-daily NetSuite sync + inventory refresh (Mon–Fri)
+  // Schedule twice-daily NetSuite sync (Mon–Fri)
   startWorkdayNetSuiteScheduler();
 
   // Run background NetSuite incremental sync if DB is available and NetSuite is configured
@@ -1487,7 +1484,7 @@ async function runStartupNetSuiteSync() {
     const result = await netsuiteSync.runSync();
     const totalFetched = result.sales.fetched + result.estimates.fetched;
     const totalUpserted = result.sales.upserted + result.estimates.upserted;
-    console.log(`  NetSuite sync complete: ${totalFetched} txn fetched, ${totalUpserted} upserted; ${result.openSales.upserted} open SOs refreshed; ${result.inventory.upserted}/${result.inventory.fetched} inventory items refreshed in ${result.durationMs}ms`);
+    console.log(`  NetSuite sync complete: ${totalFetched} txn fetched, ${totalUpserted} upserted; ${result.openSales.upserted} open SOs refreshed in ${result.durationMs}ms`);
   } catch (e) {
     console.error('  NetSuite startup sync failed:', e.message);
   }
