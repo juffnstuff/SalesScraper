@@ -80,10 +80,10 @@ h6 { font-weight: 600; letter-spacing: 0.04em; font-size: 0.95rem; }
   color: var(--crawler-ink);
   font-family: 'Oswald', sans-serif;
   font-weight: 600;
-  font-size: 11px;
+  font-size: 10px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  padding: 8px 24px 8px 244px;
+  padding: 4px 24px 4px 244px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -93,10 +93,11 @@ h6 { font-weight: 600; letter-spacing: 0.04em; font-size: 0.95rem; }
   position: sticky;
   top: 0;
   z-index: 1060;
+  min-height: 22px;
 }
 .crawler-bar .star { color: var(--warm); }
 @media (max-width: 991.98px) {
-  .crawler-bar { padding: 8px 16px; }
+  .crawler-bar { padding: 4px 16px; }
   .crawler-bar > span:nth-child(2),
   .crawler-bar > span:nth-child(4) { display: none; }
 }
@@ -119,7 +120,7 @@ h6 { font-weight: 600; letter-spacing: 0.04em; font-size: 0.95rem; }
 :root { --hot: #ff2d7a; --hot-glow: rgba(255,45,122,0.55); }
 .app-mark {
   position: relative;
-  padding: 22px 18px 18px;
+  padding: 36px 18px 20px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
