@@ -116,9 +116,8 @@ h6 { font-weight: 600; letter-spacing: 0.04em; font-size: 0.95rem; }
 }
 
 /* App mark — HOT — sits above RFRP */
+:root { --hot: #ff2d7a; --hot-glow: rgba(255,45,122,0.55); }
 .app-mark {
-  --hot: #ff2d7a;
-  --hot-glow: rgba(255,45,122,0.55);
   position: relative;
   padding: 22px 18px 18px;
   display: flex;
@@ -310,8 +309,10 @@ h6 { font-weight: 600; letter-spacing: 0.04em; font-size: 0.95rem; }
 }
 .topbar .topbar-title {
   font-family: 'Yellowtail', cursive;
-  font-size: 24px;
-  color: var(--accent);
+  font-size: 26px;
+  color: var(--hot);
+  text-shadow: 0 0 12px var(--hot-glow);
+  letter-spacing: 0.005em;
 }
 
 .sidebar-overlay {
@@ -656,6 +657,97 @@ h6 { font-weight: 600; letter-spacing: 0.04em; font-size: 0.95rem; }
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--accent);
+}
+
+/* ── Notes / memo callouts ───────────────────────────────── */
+.notes-callout {
+  background: rgba(168,216,232,0.08);
+  border-left: 3px solid var(--accent);
+  border-radius: 2px;
+  color: var(--ink);
+}
+.notes-callout small { color: var(--ink-dim); }
+.notes-callout strong { color: var(--ink); }
+
+/* ── Mobile / iPhone tuning ──────────────────────────────── */
+@media (max-width: 991.98px) {
+  /* Hide the desktop crawler on mobile — the topbar covers the same role */
+  .crawler-bar { display: none; }
+
+  .topbar {
+    padding: 0 14px;
+    border-bottom-color: var(--accent);
+  }
+  .topbar .topbar-title {
+    font-size: 22px;
+    color: var(--hot, #ff2d7a);
+    text-shadow: 0 0 10px rgba(255,45,122,0.45);
+  }
+
+  /* Sidebar narrower-but-comfier on phone */
+  .sidebar { width: 84vw; max-width: 300px; }
+
+  .main-content { padding: 64px 14px 36px; }
+
+  /* Display type scales down */
+  h1 { font-size: 1.6rem; }
+  h3 { font-size: 1.15rem; letter-spacing: 0.015em; }
+
+  .stat-value { font-size: 1.5rem; }
+  .stat-label { font-size: 9px; letter-spacing: 0.16em; }
+
+  /* Cards & containers — tighten padding */
+  .card-body  { padding: 14px; }
+  .card-header, .card-footer { padding: 10px 14px; }
+
+  /* Buttons keep tappable height */
+  .btn { padding: 10px 14px; font-size: 11px; }
+  .btn-sm { padding: 8px 10px; }
+  .btn-lg { padding: 14px 18px; font-size: 13px; }
+
+  /* Forms: 16px to suppress iOS auto-zoom on focus */
+  .form-control, .form-select { font-size: 16px; }
+
+  /* Tables become horizontally scrollable to avoid overflow */
+  .table { font-size: 12px; }
+  .card-body.p-0 > .table,
+  .card > .table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
+
+  /* Maps shrink */
+  #heatmap  { height: 360px; }
+  #salesmap { height: 380px; }
+  .heatmap-sidebar, .salesmap-sidebar { max-height: none; }
+
+  /* Login card is fluid on phone */
+  .login-card { width: 100%; max-width: 420px; }
+  .login-shell { padding: 16px; }
+  .login-card .card-body { padding: 28px 22px !important; }
+  .rf-logo .wordmark { font-size: 48px !important; }
+
+  /* App-mark stays loud but trims a touch */
+  .app-mark { padding: 18px 16px 14px; }
+  .app-mark-wordmark { font-size: 38px; }
+
+  /* Stage-toggle button row wraps */
+  .stage-toggle { font-size: 10px; padding: 6px 8px; }
+}
+
+@media (max-width: 480px) {
+  .main-content { padding: 60px 10px 28px; }
+  .app-mark-wordmark { font-size: 34px; }
+  .stat-value { font-size: 1.3rem; }
+  h1 { font-size: 1.35rem; }
+}
+
+/* iOS safe-area insets (notch / home indicator) */
+@supports (padding: max(0px)) {
+  .main-content {
+    padding-left:   max(14px, env(safe-area-inset-left));
+    padding-right:  max(14px, env(safe-area-inset-right));
+    padding-bottom: max(36px, env(safe-area-inset-bottom));
+  }
+  .topbar { padding-top: env(safe-area-inset-top); height: calc(48px + env(safe-area-inset-top)); }
+  .sidebar { padding-top: env(safe-area-inset-top); }
 }
 
 /* ── Sync animations ─────────────────────────────────────── */

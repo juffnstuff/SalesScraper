@@ -542,7 +542,7 @@ function showTransactionDetail(txn) {
   }
 
   if (txn.memo) {
-    html += `<div class="mt-3 p-2" style="background:#f8fafc; border-radius:8px;"><small class="text-muted"><strong>Memo:</strong> ${escapeHtml(txn.memo)}</small></div>`;
+    html += `<div class="notes-callout mt-3 p-2"><small><strong>Memo:</strong> ${escapeHtml(txn.memo)}</small></div>`;
   }
 
   html += '</div>';
