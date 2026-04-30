@@ -115,8 +115,77 @@ h6 { font-weight: 600; letter-spacing: 0.04em; font-size: 0.95rem; }
   overflow-y: auto;
 }
 
+/* App mark — HOT — sits above RFRP */
+.app-mark {
+  --hot: #ff2d7a;
+  --hot-glow: rgba(255,45,122,0.55);
+  position: relative;
+  padding: 22px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1;
+  border-bottom: 1px dashed var(--rule);
+  background:
+    radial-gradient(ellipse at 20% 50%, rgba(255,45,122,0.10), transparent 70%);
+}
+.app-mark-eyebrow {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 4px;
+  margin-left: 4px;
+}
+.app-mark-wordmark {
+  font-family: 'Yellowtail', cursive;
+  font-size: 44px;
+  line-height: 0.9;
+  letter-spacing: 0.005em;
+  color: var(--hot);
+  transform: rotate(-3deg);
+  transform-origin: left center;
+  white-space: nowrap;
+  text-shadow:
+    0 0 1px var(--hot),
+    0.6px 0 0 var(--hot), -0.6px 0 0 var(--hot),
+    0 0.6px 0 var(--hot), 0 -0.6px 0 var(--hot),
+    0 0 14px var(--hot-glow),
+    0 0 28px var(--hot-glow);
+  animation: app-mark-pulse 2.4s ease-in-out infinite;
+}
+.app-mark-underline {
+  margin-top: 10px;
+  width: 70%;
+  height: 2px;
+  background: linear-gradient(90deg, var(--hot) 0%, transparent 100%);
+  box-shadow: 0 0 8px var(--hot-glow);
+}
+@keyframes app-mark-pulse {
+  0%, 100% {
+    text-shadow:
+      0 0 1px var(--hot),
+      0.6px 0 0 var(--hot), -0.6px 0 0 var(--hot),
+      0 0.6px 0 var(--hot), 0 -0.6px 0 var(--hot),
+      0 0 12px var(--hot-glow),
+      0 0 22px var(--hot-glow);
+  }
+  50% {
+    text-shadow:
+      0 0 1px var(--hot),
+      0.6px 0 0 var(--hot), -0.6px 0 0 var(--hot),
+      0 0.6px 0 var(--hot), 0 -0.6px 0 var(--hot),
+      0 0 18px var(--hot-glow),
+      0 0 36px var(--hot-glow);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-mark-wordmark { animation: none; }
+}
+
 .sidebar-brand {
-  padding: 18px 18px 14px;
+  padding: 14px 18px 14px;
   border-bottom: 1px solid var(--rule);
 }
 .sidebar-brand a { display: block; text-decoration: none; }
@@ -127,9 +196,17 @@ h6 { font-weight: 600; letter-spacing: 0.04em; font-size: 0.95rem; }
   align-items: flex-start;
   line-height: 1;
 }
+.rf-logo-kicker {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-bottom: 4px;
+}
 .rf-logo .wordmark {
   font-family: 'Yellowtail', cursive;
-  font-size: 44px;
+  font-size: 32px;
   color: var(--accent);
   line-height: 0.9;
   letter-spacing: 0.005em;
@@ -140,17 +217,17 @@ h6 { font-weight: 600; letter-spacing: 0.04em; font-size: 0.95rem; }
 .rf-logo .subtitle {
   font-family: 'Oswald', sans-serif;
   font-weight: 700;
-  font-size: 10px;
+  font-size: 9px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--ink);
-  margin-top: 6px;
+  margin-top: 5px;
 }
 .rf-logo .since {
   font-family: 'Oswald', sans-serif;
   font-weight: 600;
   font-style: italic;
-  font-size: 10px;
+  font-size: 9px;
   letter-spacing: 0.04em;
   color: var(--warm);
   margin-top: 2px;
