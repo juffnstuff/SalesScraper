@@ -140,7 +140,7 @@ h6 { font-weight: 600; letter-spacing: 0.04em; font-size: 0.95rem; }
 }
 .app-mark-wordmark {
   font-family: 'Yellowtail', cursive;
-  font-size: 44px;
+  font-size: 36px;
   line-height: 0.9;
   letter-spacing: 0.005em;
   color: var(--hot);
@@ -218,10 +218,11 @@ h6 { font-weight: 600; letter-spacing: 0.04em; font-size: 0.95rem; }
   font-family: 'Oswald', sans-serif;
   font-weight: 700;
   font-size: 9px;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--ink);
   margin-top: 5px;
+  white-space: nowrap;
 }
 .rf-logo .since {
   font-family: 'Oswald', sans-serif;
