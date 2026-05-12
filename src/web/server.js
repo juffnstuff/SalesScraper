@@ -357,8 +357,9 @@ app.post('/api/contacts/find', ensureAuth, async (req, res) => {
   if (!projectId) return res.status(400).json({ error: 'projectId required' });
 
   try {
-    const SellingApiClient = require('../enrichment/selling_api');
-    const selling = new SellingApiClient();
+    const { createEnrichmentClient } = require('../enrichment');
+    const enrichment = createEnrichmentClient();
+    const providerLabel = (process.env.ENRICHMENT_PROVIDER || 'apollo').toLowerCase();
 
     // Load project and its contractors
     const db = require('./db');
@@ -371,7 +372,7 @@ app.post('/api/contacts/find', ensureAuth, async (req, res) => {
       return res.json({ success: true, contacts: [], message: 'No contractors found — run contractor discovery first' });
     }
 
-    // Default buyer titles for Selling.com search
+    // Default buyer titles for enrichment search
     const targetTitles = [
       'Project Manager', 'Procurement Manager', 'Purchasing Manager',
       'Operations Manager', 'VP Operations', 'VP Construction',
@@ -382,9 +383,9 @@ app.post('/api/contacts/find', ensureAuth, async (req, res) => {
 
     const allContacts = [];
     for (const contractor of contractors) {
-      console.log(`[Selling.com] Searching: ${contractor.name} (${project.state})`);
-      const found = await selling.findContacts(contractor.name, project.state, targetTitles);
-      console.log(`[Selling.com] → ${found.length} contacts for ${contractor.name}`);
+      console.log(`[${providerLabel}] Searching: ${contractor.name} (${project.state})`);
+      const found = await enrichment.findContacts(contractor.name, project.state, targetTitles);
+      console.log(`[${providerLabel}] → ${found.length} contacts for ${contractor.name}`);
 
       if (found.length > 0) {
         const saved = await dataLayer.saveContacts(projectId, contractor.id, found);

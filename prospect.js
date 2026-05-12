@@ -27,7 +27,7 @@ const fs = require('fs');
 const path = require('path');
 const ICPEngine = require('./src/discovery/icp_engine');
 const BidSearcher = require('./src/prospecting/bid_searcher');
-const SellingApiClient = require('./src/enrichment/selling_api');
+const { createEnrichmentClient } = require('./src/enrichment');
 const HubSpotClient = require('./src/crm/hubspot_client');
 const CLIDisplay = require('./src/ui/cli_display');
 const Reporter = require('./src/ui/reporter');
@@ -98,7 +98,7 @@ async function main() {
   // Initialize engines
   const icpEngine = new ICPEngine();
   const bidSearcher = new BidSearcher();
-  const sellingApi = new SellingApiClient();
+  const enrichment = createEnrichmentClient();
   const hubspot = new HubSpotClient();
 
   CLIDisplay.header();
@@ -150,11 +150,12 @@ async function main() {
         continue;
       }
 
-      // Step 3: Enrich contacts via Selling.com
+      // Step 3: Enrich contacts via configured provider (Apollo by default)
       if (!opts.skipEnrich) {
-        console.log(`\n  Enriching contacts via Selling.com...`);
+        const providerName = process.env.ENRICHMENT_PROVIDER || 'apollo';
+        console.log(`\n  Enriching contacts via ${providerName}...`);
         for (const result of searchResults.results) {
-          const contacts = await sellingApi.findContactsForProject(result, icp);
+          const contacts = await enrichment.findContactsForProject(result, icp);
           result.contacts = contacts;
         }
       }
