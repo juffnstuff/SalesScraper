@@ -8,7 +8,8 @@
     "cli": "node prospect.js --rep all",
     "web": "node src/web/server.js",
     "dry-run": "node prospect.js --rep all --dry-run",
-    "report": "node prospect.js --report"
+    "report": "node prospect.js --report",
+    "smoke:selling": "node scripts/smoke_test_selling_api.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
