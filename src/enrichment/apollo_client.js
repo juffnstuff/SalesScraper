@@ -45,43 +45,74 @@ class ApolloClient {
   // ---------- Title-based contact discovery ----------
 
   /**
-   * Find contacts at a company matching target titles. Apollo supports this
-   * natively via /mixed_people/search.
+   * Search for net-new people via /mixed_people/api_search. Free of credits.
    *
-   * Returns the normalized contact shape that prospect.js and web/server.js
-   * already expect: { firstName, lastName, email, phone, title, company,
-   * linkedIn, state, confidence, source, providerPersonId }.
+   * The search endpoint does NOT return emails, phone numbers, or LinkedIn
+   * URLs — only obfuscated last names plus `has_email` / `has_direct_phone`
+   * flags. To actually contact these people, call enrichContact() or
+   * bulkEnrichContacts() with each result's `providerPersonId`. Combined
+   * flow is exposed as findAndEnrichContacts().
+   *
+   * @param {string} companyName       Used as q_keywords fallback if no domain
+   * @param {string} state             Person's location (state or city)
+   * @param {string[]} targetTitles    Job titles (substring-matched by default)
+   * @param {number} [limit]
+   * @param {object} [opts]
+   * @param {string} [opts.domain]                 q_organization_domains_list[]  — preferred over name
+   * @param {string[]} [opts.seniorities]          owner|founder|c_suite|partner|vp|head|director|manager|senior|entry|intern
+   * @param {string[]} [opts.emailStatuses]        verified|unverified|likely to engage|unavailable (default: ['verified'])
+   * @param {boolean} [opts.includeSimilarTitles]  default true
+   * @param {number}   [opts.page]                 default 1
    */
-  async findContacts(companyName, state, targetTitles, limit) {
+  async findContacts(companyName, state, targetTitles, limit, opts = {}) {
     if (!this.apiKey) {
       console.warn('  Apollo API key not configured — skipping contact search');
       return [];
     }
-    if (!companyName) return [];
+    if (!companyName && !opts.domain) return [];
 
     const perPage = Math.min(
       limit ?? parseInt(process.env.MAX_CONTACTS_PER_PROJECT || '3', 10),
-      25
+      100
     );
 
-    const body = {
-      page: 1,
-      per_page: perPage,
-      organization_names: [companyName],
-    };
-    if (Array.isArray(targetTitles) && targetTitles.length > 0) {
-      body.person_titles = targetTitles;
-    }
-    if (state) {
-      body.person_locations = [`${state}, US`];
+    const params = new URLSearchParams();
+    params.append('page', String(opts.page || 1));
+    params.append('per_page', String(perPage));
+
+    if (opts.domain) {
+      params.append('q_organization_domains_list[]', opts.domain);
+    } else if (companyName) {
+      params.append('q_keywords', companyName);
     }
 
+    if (Array.isArray(targetTitles)) {
+      for (const t of targetTitles) params.append('person_titles[]', t);
+    }
+    if (state) {
+      params.append('person_locations[]', state);
+    }
+    if (Array.isArray(opts.seniorities)) {
+      for (const s of opts.seniorities) params.append('person_seniorities[]', s);
+    }
+    const statuses = opts.emailStatuses || ['verified'];
+    for (const s of statuses) params.append('contact_email_status[]', s);
+    if (opts.includeSimilarTitles === false) {
+      params.append('include_similar_titles', 'false');
+    }
+
+    const endpoint = `/mixed_people/api_search?${params.toString()}`;
+
     try {
-      const res = await this._request('POST', '/mixed_people/search', body);
-      const people = res.people || [];
-      return people.map(p => this._normalizePerson(p, companyName, state));
+      const res = await this._request('POST', endpoint, null);
+      const people = res?.people || [];
+      return people.map(p => this._normalizeSearchPerson(p, companyName, state));
     } catch (e) {
-      console.warn(`  Apollo lookup failed for "${companyName}": ${e.message}`);
+      if (/API_INACCESSIBLE/.test(e.message)) {
+        console.warn('  Apollo search rejected — this endpoint requires a MASTER api key. Regenerate at app.apollo.io and pick the master scope.');
+      } else {
+        console.warn(`  Apollo search failed for "${companyName}": ${e.message}`);
+      }
       return [];
     }
   }
@@ -89,8 +120,13 @@ class ApolloClient {
   /**
    * Find contacts for a project opportunity — owner + general contractor.
    * Matches the call shape prospect.js:157 expects.
+   *
+   * Default behaviour is search-then-enrich: free Search returns candidates,
+   * then we call /people/match for each who has `has_email: true` so the
+   * approval UI shows usable email + phone. Set `opts.enrich = false` to skip
+   * the enrichment step (saves credits but returns obfuscated names).
    */
-  async findContactsForProject(project, icp) {
+  async findContactsForProject(project, icp, opts = {}) {
     if (!this.apiKey) return [];
 
     const targetTitles = (icp && icp.buyerTitles) || [
@@ -98,25 +134,65 @@ class ApolloClient {
       'safety director', 'purchasing agent'
     ];
     const state = project?.geography?.state || '';
+    const enrich = opts.enrich !== false;
+    const finder = enrich ? this.findAndEnrichContacts.bind(this) : this.findContacts.bind(this);
     const contacts = [];
 
     if (project?.owner) {
-      const ownerContacts = await this.findContacts(project.owner, state, targetTitles);
+      const ownerContacts = await finder(project.owner, state, targetTitles);
       contacts.push(...ownerContacts.map(c => ({ ...c, role: 'owner' })));
     }
     if (project?.generalContractor) {
-      const gcContacts = await this.findContacts(project.generalContractor, state, targetTitles);
+      const gcContacts = await finder(project.generalContractor, state, targetTitles);
       contacts.push(...gcContacts.map(c => ({ ...c, role: 'general_contractor' })));
     }
     return contacts;
   }
 
+  /**
+   * Two-step flow: free Search → paid Enrichment. For each candidate Apollo
+   * claims has an email (`has_email: true`), call /people/match by Apollo ID
+   * to retrieve the actual email/phone/linkedin. Records without
+   * `has_email` are returned as-is (obfuscated) so callers can still see them.
+   *
+   * Credits: 1 per enriched record. Cap with `opts.maxEnrich` (default 10).
+   */
+  async findAndEnrichContacts(companyName, state, targetTitles, limit, opts = {}) {
+    const candidates = await this.findContacts(companyName, state, targetTitles, limit, opts);
+    if (!candidates.length) return [];
+
+    const enrichable = candidates.filter(c => c.hasEmail && c.providerPersonId);
+    const maxEnrich = opts.maxEnrich ?? 10;
+    const toEnrich = enrichable.slice(0, maxEnrich);
+    const enrichedById = new Map();
+
+    for (const c of toEnrich) {
+      try {
+        const res = await this.enrichContact({ id: c.providerPersonId });
+        if (res?.person) {
+          enrichedById.set(c.providerPersonId, this._normalizeEnrichedPerson(res.person, c.company, state));
+        }
+      } catch (e) {
+        console.warn(`  Apollo enrichment failed for ${c.providerPersonId}: ${e.message}`);
+      }
+    }
+
+    return candidates.map(c => enrichedById.get(c.providerPersonId) || c);
+  }
+
   // ---------- Single enrichment ----------
 
   /**
-   * Enrich a single known contact. Caller supplies at least one of:
-   * email | linkedin_url | (first_name + last_name + organization_name).
-   * Returns the raw `{ person }` response or null.
+   * Enrich a single known contact via /people/match. Caller supplies at
+   * least one of:
+   *   - `id` (Apollo person ID, recommended — perfect-match)
+   *   - `email`
+   *   - `linkedin_url`
+   *   - `first_name` + `last_name` + `organization_name`
+   *
+   * Returns the raw `{ person }` response. Field shapes for /people/match
+   * are assumed from Apollo's historical docs; share the People Enrichment
+   * docs to verify and tighten this further.
    */
   async enrichContact(input) {
     if (!this.apiKey) {
@@ -125,7 +201,7 @@ class ApolloClient {
     }
     if (!input || !hasContactIdentifier(input)) {
       throw new Error(
-        'enrichContact: requires email, linkedin_url, or ' +
+        'enrichContact: requires id, email, linkedin_url, or ' +
         'first_name+last_name+organization_name'
       );
     }
@@ -218,22 +294,55 @@ class ApolloClient {
 
   // ---------- Internals ----------
 
-  _normalizePerson(p, fallbackCompany, fallbackState) {
-    const email = cleanEmail(p.email);
-    const phone = extractPhone(p);
+  /**
+   * Shape returned by /mixed_people/api_search — note: NO email/phone/linkedin
+   * available here; last name is obfuscated. Call enrichContact() with the
+   * `providerPersonId` to get usable contact info.
+   */
+  _normalizeSearchPerson(p, fallbackCompany, fallbackState) {
     return {
       firstName: p.first_name || '',
-      lastName: p.last_name || '',
+      lastName: p.last_name_obfuscated || '',
+      email: '',
+      phone: '',
+      title: p.title || '',
+      company: p.organization?.name || fallbackCompany || '',
+      linkedIn: '',
+      state: fallbackState || '',
+      confidence: scoreSearchPerson(p),
+      source: 'apollo.io',
+      providerPersonId: p.id || null,
+      hasEmail: p.has_email === true,
+      hasDirectPhone: p.has_direct_phone === 'Yes',
+      lastRefreshedAt: p.last_refreshed_at || null,
+      needsEnrichment: true,
+    };
+  }
+
+  /**
+   * Shape returned by /people/match — full contact data including email,
+   * phone, and LinkedIn (subject to your Apollo plan). Field names assumed
+   * from Apollo's historical docs; verify against current People Enrichment
+   * docs and adjust if needed.
+   */
+  _normalizeEnrichedPerson(p, fallbackCompany, fallbackState) {
+    const email = cleanEmail(p.email);
+    return {
+      firstName: p.first_name || '',
+      lastName: p.last_name || p.last_name_obfuscated || '',
       email,
-      phone,
+      phone: extractPhone(p),
       title: p.title || '',
       company: p.organization?.name || fallbackCompany || '',
       linkedIn: p.linkedin_url || '',
       state: p.state || fallbackState || '',
-      confidence: scoreContact(p, email),
+      confidence: scoreEnrichedPerson(p, email),
       source: 'apollo.io',
       providerPersonId: p.id || null,
       emailStatus: p.email_status || null,
+      hasEmail: !!email,
+      hasDirectPhone: !!(p.phone_numbers && p.phone_numbers.length),
+      needsEnrichment: false,
     };
   }
 
@@ -310,6 +419,7 @@ class ApolloClient {
 }
 
 function hasContactIdentifier(input) {
+  if (input.id) return true;
   if (input.email) return true;
   if (input.linkedin_url) return true;
   if (input.first_name && input.last_name && input.organization_name) return true;
@@ -332,13 +442,22 @@ function extractPhone(person) {
   return pick.raw_number || pick.sanitized_number || '';
 }
 
-function scoreContact(person, email) {
+function scoreSearchPerson(p) {
+  let score = 40;
+  if (p.has_email) score += 25;
+  if (p.has_direct_phone === 'Yes') score += 20;
+  if (p.title) score += 10;
+  if (p.organization?.name) score += 5;
+  return Math.min(100, score);
+}
+
+function scoreEnrichedPerson(p, email) {
   let score = 40;
   if (email) score += 20;
-  if (person.email_status === 'verified') score += 25;
-  else if (person.email_status === 'guessed') score += 5;
-  if (person.linkedin_url) score += 10;
-  if (person.phone_numbers && person.phone_numbers.length) score += 5;
+  if (p.email_status === 'verified') score += 25;
+  else if (p.email_status === 'guessed') score += 5;
+  if (p.linkedin_url) score += 10;
+  if (p.phone_numbers && p.phone_numbers.length) score += 5;
   return Math.min(100, score);
 }
 

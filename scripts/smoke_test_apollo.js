@@ -52,17 +52,33 @@ async function main() {
   let failures = 0;
 
   if (want('--search')) {
-    header(`POST /mixed_people/search  (${TEST_COMPANY}, titles=${TEST_TITLES.join('|')})`);
+    header(`POST /mixed_people/api_search  (${TEST_COMPANY}, titles=${TEST_TITLES.join('|')})`);
+    console.log('(credit-free endpoint; returns obfuscated names + has_email/has_phone flags)');
     try {
       const contacts = await client.findContacts(TEST_COMPANY, TEST_STATE, TEST_TITLES, 3);
-      console.log(`returned ${contacts.length} contacts`);
+      console.log(`returned ${contacts.length} candidates`);
       contacts.forEach((c, i) => {
-        console.log(`  [${i}] ${c.firstName} ${c.lastName} — ${c.title || '(no title)'}`);
-        console.log(`       email=${c.email || '(obfuscated/missing)'} status=${c.emailStatus || 'n/a'} conf=${c.confidence}`);
+        console.log(`  [${i}] ${c.firstName} ${c.lastName} — ${c.title || '(no title)'} @ ${c.company}`);
+        console.log(`       id=${c.providerPersonId} hasEmail=${c.hasEmail} hasDirectPhone=${c.hasDirectPhone} conf=${c.confidence}`);
       });
       if (contacts.length === 0) {
-        console.warn('⚠ no contacts returned — check titles/state, or your plan may not include search results');
+        console.warn('⚠ no candidates returned — try a broader company or remove the state filter');
+      } else {
+        console.log('\nNext step: call --match (or findAndEnrichContacts) with one of the IDs above to reveal email/phone.');
       }
+    } catch (e) { failures++; console.error('✗', e.message); }
+  }
+
+  if (want('--find-enrich')) {
+    header(`Search + Enrich  (${TEST_COMPANY}, max 3)`);
+    console.log('(Search is free; each enrichment costs 1 credit)');
+    try {
+      const contacts = await client.findAndEnrichContacts(TEST_COMPANY, TEST_STATE, TEST_TITLES, 3, { maxEnrich: 3 });
+      console.log(`returned ${contacts.length} contacts (${contacts.filter(c => !c.needsEnrichment).length} enriched)`);
+      contacts.forEach((c, i) => {
+        console.log(`  [${i}] ${c.firstName} ${c.lastName} — ${c.title || '(no title)'}`);
+        console.log(`       email=${c.email || '(none)'} phone=${c.phone || '(none)'} linkedIn=${c.linkedIn ? 'yes' : 'no'} conf=${c.confidence}`);
+      });
     } catch (e) { failures++; console.error('✗', e.message); }
   }
 
