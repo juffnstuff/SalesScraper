@@ -596,9 +596,129 @@ async function assignContactRep(contactId, repId) {
   await db.query('UPDATE contacts SET assigned_rep = $1 WHERE id = $2', [repId, contactId]);
 }
 
+// ── Contact Lists (shared shopping carts for campaign building) ──
+
+async function getLists() {
+  if (!(await db.isReady())) return [];
+  const { rows } = await db.query(`
+    SELECT cl.id, cl.name, cl.description, cl.created_at, cl.pushed_at, cl.pushed_count,
+           COUNT(cli.contact_id)::int AS member_count
+    FROM contact_lists cl
+    LEFT JOIN contact_list_items cli ON cli.list_id = cl.id
+    GROUP BY cl.id
+    ORDER BY cl.created_at DESC
+  `);
+  return rows.map(r => ({
+    id: r.id,
+    name: r.name,
+    description: r.description || '',
+    createdAt: r.created_at,
+    pushedAt: r.pushed_at,
+    pushedCount: r.pushed_count || 0,
+    memberCount: r.member_count || 0
+  }));
+}
+
+async function createList(name, description) {
+  if (!(await db.isReady())) throw new Error('Database not ready');
+  const trimmed = (name || '').trim();
+  if (!trimmed) throw new Error('List name required');
+  const { rows } = await db.query(
+    'INSERT INTO contact_lists (name, description) VALUES ($1, $2) RETURNING *',
+    [trimmed, (description || '').trim()]
+  );
+  return rows[0];
+}
+
+async function deleteList(listId) {
+  if (!(await db.isReady())) return;
+  await db.query('DELETE FROM contact_lists WHERE id = $1', [listId]);
+}
+
+async function addContactsToList(listId, contactIds) {
+  if (!(await db.isReady())) return 0;
+  if (!contactIds || contactIds.length === 0) return 0;
+  const { rowCount } = await db.query(`
+    INSERT INTO contact_list_items (list_id, contact_id)
+    SELECT $1, unnest($2::int[])
+    ON CONFLICT DO NOTHING
+  `, [listId, contactIds]);
+  return rowCount || 0;
+}
+
+async function removeContactFromList(listId, contactId) {
+  if (!(await db.isReady())) return;
+  await db.query('DELETE FROM contact_list_items WHERE list_id = $1 AND contact_id = $2', [listId, contactId]);
+}
+
+async function getListMembers(listId) {
+  if (!(await db.isReady())) return [];
+  const { rows } = await db.query(`
+    SELECT ct.*, c.name AS contractor_name, c.role AS contractor_role,
+           p.id AS proj_id, p.project_name, p.project_type,
+           p.city AS proj_city, p.state AS proj_state,
+           p.source_url, cli.added_at
+    FROM contact_list_items cli
+    JOIN contacts ct ON cli.contact_id = ct.id
+    LEFT JOIN contractors c ON ct.contractor_id = c.id
+    LEFT JOIN projects p ON ct.project_id = p.id
+    WHERE cli.list_id = $1
+    ORDER BY cli.added_at DESC
+  `, [listId]);
+  return rows.map(r => ({
+    id: r.id,
+    firstName: r.first_name,
+    lastName: r.last_name,
+    email: r.email,
+    phone: r.phone,
+    title: r.title,
+    company: r.company,
+    linkedin: r.linkedin,
+    state: r.state,
+    confidence: parseFloat(r.confidence) || 0,
+    pushedToHubspot: r.pushed_to_hubspot,
+    hubspotContactId: r.hubspot_contact_id,
+    contractorName: r.contractor_name || '',
+    contractorRole: r.contractor_role || '',
+    projectId: r.proj_id,
+    projectName: r.project_name || '',
+    projectType: r.project_type || '',
+    projectCity: r.proj_city || '',
+    projectState: r.proj_state || '',
+    sourceUrl: r.source_url || '',
+    addedAt: r.added_at
+  }));
+}
+
+async function getListById(listId) {
+  if (!(await db.isReady())) return null;
+  const { rows } = await db.query('SELECT * FROM contact_lists WHERE id = $1', [listId]);
+  return rows[0] || null;
+}
+
+async function markListPushed(listId, pushedCount) {
+  if (!(await db.isReady())) return;
+  await db.query(
+    'UPDATE contact_lists SET pushed_at = NOW(), pushed_count = pushed_count + $1 WHERE id = $2',
+    [pushedCount, listId]
+  );
+}
+
+async function getListsForContact(contactId) {
+  if (!(await db.isReady())) return [];
+  const { rows } = await db.query(
+    'SELECT list_id FROM contact_list_items WHERE contact_id = $1',
+    [contactId]
+  );
+  return rows.map(r => r.list_id);
+}
+
 module.exports = {
   getProjects, mergeProjects, findProject, saveContractors,
   getTransactions, getUsers, saveUsers, updateUser,
   getProjectsForRep, getContractorsForProject,
-  saveContacts, getContactsForProject, markContactPushed, assignContactRep
+  saveContacts, getContactsForProject, markContactPushed, assignContactRep,
+  getLists, createList, deleteList, getListById,
+  addContactsToList, removeContactFromList, getListMembers,
+  markListPushed, getListsForContact
 };

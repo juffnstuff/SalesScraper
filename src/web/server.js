@@ -436,91 +436,231 @@ app.get('/api/contacts/:projectId', ensureAuth, async (req, res) => {
   }
 });
 
+// ── Helper: push a batch of contact IDs to HubSpot (shared by /api/contacts/push and /api/lists/:id/push) ──
+async function pushContactsToHubspot(contactIds, repId) {
+  const reps = loadReps();
+  const rep = repId ? reps.find(r => r.id === repId) : null;
+  if (repId && !rep) throw new Error('Rep not found');
+
+  const HubSpotClient = require('../crm/hubspot_client');
+  const hubspot = new HubSpotClient();
+  const db = require('./db');
+  const results = [];
+
+  for (const contactId of contactIds) {
+    const { rows: contactRows } = await db.query(`
+      SELECT ct.*, p.project_name, p.project_type, p.city AS proj_city, p.state AS proj_state,
+             p.estimated_value, p.bid_date, p.owner, p.general_contractor, p.source_url, p.source,
+             p.verticals, c.name AS contractor_name, c.role AS contractor_role
+      FROM contacts ct
+      JOIN projects p ON ct.project_id = p.id
+      LEFT JOIN contractors c ON ct.contractor_id = c.id
+      WHERE ct.id = $1
+    `, [contactId]);
+
+    if (contactRows.length === 0) {
+      results.push({ contactId, action: 'failed', error: 'Contact not found' });
+      continue;
+    }
+
+    const ct = contactRows[0];
+
+    let effectiveRep = rep;
+    if (!effectiveRep && ct.assigned_rep) {
+      effectiveRep = reps.find(r => r.id === ct.assigned_rep);
+    }
+    if (!effectiveRep) {
+      const projectVerticals = ct.verticals || [];
+      effectiveRep = reps.find(r => r.verticals && r.verticals.some(v => projectVerticals.includes(v)));
+    }
+    if (!effectiveRep) {
+      effectiveRep = reps.find(r => r.id === 'jake_robbins') || reps[0];
+    }
+
+    const contact = {
+      firstName: ct.first_name || '',
+      lastName: ct.last_name || ct.contractor_name || 'Unknown',
+      email: ct.email || '',
+      phone: ct.phone || '',
+      title: ct.title || 'Decision Maker',
+      company: ct.company || ct.contractor_name || '',
+      state: ct.state || ct.proj_state || ''
+    };
+
+    const project = {
+      projectName: ct.project_name,
+      projectType: ct.project_type || '',
+      owner: ct.owner || '',
+      generalContractor: ct.general_contractor || '',
+      bidDate: ct.bid_date || '',
+      estimatedValue: parseFloat(ct.estimated_value) || 0,
+      relevanceScore: 0,
+      geography: { city: ct.proj_city || '', state: ct.proj_state || '' },
+      sourceUrl: ct.source_url || '',
+      source: ct.source || '',
+      scoringReasoning: `Heatmap project. Contractor: ${ct.contractor_name || ''} (${ct.contractor_role || ''}). Contact via Apollo.`
+    };
+
+    try {
+      const result = await hubspot.pushProspect(contact, project, effectiveRep);
+      await dataLayer.markContactPushed(contactId, result.contactId || '');
+      results.push({ contactId, ...result });
+    } catch (e) {
+      results.push({ contactId, action: 'failed', error: e.message });
+    }
+  }
+
+  return results;
+}
+
 // ── API: Push contacts to HubSpot ──
 app.post('/api/contacts/push', ensureAuth, async (req, res) => {
   const { contactIds, repId } = req.body;
   if (!contactIds || !contactIds.length) return res.status(400).json({ error: 'contactIds required' });
 
-  const reps = loadReps();
-  const rep = repId ? reps.find(r => r.id === repId) : null;
-  if (repId && !rep) return res.status(404).json({ error: 'Rep not found' });
-
   try {
-    const HubSpotClient = require('../crm/hubspot_client');
-    const hubspot = new HubSpotClient();
-    const db = require('./db');
-    const results = [];
-
-    for (const contactId of contactIds) {
-      // Load contact + project context
-      const { rows: contactRows } = await db.query(`
-        SELECT ct.*, p.project_name, p.project_type, p.city AS proj_city, p.state AS proj_state,
-               p.estimated_value, p.bid_date, p.owner, p.general_contractor, p.source_url, p.source,
-               p.verticals, c.name AS contractor_name, c.role AS contractor_role
-        FROM contacts ct
-        JOIN projects p ON ct.project_id = p.id
-        LEFT JOIN contractors c ON ct.contractor_id = c.id
-        WHERE ct.id = $1
-      `, [contactId]);
-
-      if (contactRows.length === 0) {
-        results.push({ contactId, action: 'failed', error: 'Contact not found' });
-        continue;
-      }
-
-      const ct = contactRows[0];
-
-      // Determine rep: explicit override > assigned rep > vertical-based
-      let effectiveRep = rep;
-      if (!effectiveRep && ct.assigned_rep) {
-        effectiveRep = reps.find(r => r.id === ct.assigned_rep);
-      }
-      if (!effectiveRep) {
-        const projectVerticals = ct.verticals || [];
-        effectiveRep = reps.find(r => r.verticals && r.verticals.some(v => projectVerticals.includes(v)));
-      }
-      if (!effectiveRep) {
-        effectiveRep = reps.find(r => r.id === 'jake_robbins') || reps[0];
-      }
-
-      const contact = {
-        firstName: ct.first_name || '',
-        lastName: ct.last_name || ct.contractor_name || 'Unknown',
-        email: ct.email || '',
-        phone: ct.phone || '',
-        title: ct.title || 'Decision Maker',
-        company: ct.company || ct.contractor_name || '',
-        state: ct.state || ct.proj_state || ''
-      };
-
-      const project = {
-        projectName: ct.project_name,
-        projectType: ct.project_type || '',
-        owner: ct.owner || '',
-        generalContractor: ct.general_contractor || '',
-        bidDate: ct.bid_date || '',
-        estimatedValue: parseFloat(ct.estimated_value) || 0,
-        relevanceScore: 0,
-        geography: { city: ct.proj_city || '', state: ct.proj_state || '' },
-        sourceUrl: ct.source_url || '',
-        source: ct.source || '',
-        scoringReasoning: `Heatmap project. Contractor: ${ct.contractor_name || ''} (${ct.contractor_role || ''}). Contact via Selling.com.`
-      };
-
-      try {
-        const result = await hubspot.pushProspect(contact, project, effectiveRep);
-        await dataLayer.markContactPushed(contactId, result.contactId || '');
-        results.push({ contactId, ...result });
-      } catch (e) {
-        results.push({ contactId, action: 'failed', error: e.message });
-      }
-    }
-
+    const results = await pushContactsToHubspot(contactIds, repId);
     res.json({ success: true, results });
   } catch (e) {
     console.error('[API] Contact push failed:', e.message);
     res.json({ success: false, error: e.message });
   }
+});
+
+// ── API: Contact Lists (shared shopping carts) ──
+
+app.get('/api/lists', ensureAuth, async (req, res) => {
+  try {
+    const lists = await dataLayer.getLists();
+    res.json({ success: true, lists });
+  } catch (e) {
+    res.json({ success: false, error: e.message, lists: [] });
+  }
+});
+
+app.post('/api/lists', ensureAuth, async (req, res) => {
+  const { name, description } = req.body;
+  if (!name || !name.trim()) return res.status(400).json({ success: false, error: 'name required' });
+  try {
+    const list = await dataLayer.createList(name, description);
+    res.json({ success: true, list });
+  } catch (e) {
+    if (/duplicate key/i.test(e.message)) {
+      return res.status(409).json({ success: false, error: 'A list with that name already exists' });
+    }
+    res.json({ success: false, error: e.message });
+  }
+});
+
+app.get('/api/lists/:id', ensureAuth, async (req, res) => {
+  const listId = parseInt(req.params.id, 10);
+  if (!listId) return res.status(400).json({ success: false, error: 'invalid list id' });
+  try {
+    const list = await dataLayer.getListById(listId);
+    if (!list) return res.status(404).json({ success: false, error: 'List not found' });
+    const members = await dataLayer.getListMembers(listId);
+    res.json({ success: true, list, members });
+  } catch (e) {
+    res.json({ success: false, error: e.message });
+  }
+});
+
+app.delete('/api/lists/:id', ensureAuth, async (req, res) => {
+  const listId = parseInt(req.params.id, 10);
+  if (!listId) return res.status(400).json({ success: false, error: 'invalid list id' });
+  try {
+    await dataLayer.deleteList(listId);
+    res.json({ success: true });
+  } catch (e) {
+    res.json({ success: false, error: e.message });
+  }
+});
+
+app.post('/api/lists/:id/items', ensureAuth, async (req, res) => {
+  const listId = parseInt(req.params.id, 10);
+  const { contactIds } = req.body;
+  if (!listId) return res.status(400).json({ success: false, error: 'invalid list id' });
+  if (!Array.isArray(contactIds) || contactIds.length === 0) {
+    return res.status(400).json({ success: false, error: 'contactIds required' });
+  }
+  try {
+    const added = await dataLayer.addContactsToList(listId, contactIds.map(n => parseInt(n, 10)).filter(Boolean));
+    res.json({ success: true, added });
+  } catch (e) {
+    res.json({ success: false, error: e.message });
+  }
+});
+
+app.delete('/api/lists/:id/items/:contactId', ensureAuth, async (req, res) => {
+  const listId = parseInt(req.params.id, 10);
+  const contactId = parseInt(req.params.contactId, 10);
+  if (!listId || !contactId) return res.status(400).json({ success: false, error: 'invalid id' });
+  try {
+    await dataLayer.removeContactFromList(listId, contactId);
+    res.json({ success: true });
+  } catch (e) {
+    res.json({ success: false, error: e.message });
+  }
+});
+
+app.post('/api/lists/:id/push', ensureAuth, async (req, res) => {
+  const listId = parseInt(req.params.id, 10);
+  if (!listId) return res.status(400).json({ success: false, error: 'invalid list id' });
+  try {
+    const members = await dataLayer.getListMembers(listId);
+    const ids = members.filter(m => !m.pushedToHubspot).map(m => m.id);
+    if (ids.length === 0) return res.json({ success: true, results: [], message: 'All members already pushed' });
+    const results = await pushContactsToHubspot(ids, req.body && req.body.repId);
+    const succeeded = results.filter(r => r.action !== 'failed').length;
+    await dataLayer.markListPushed(listId, succeeded);
+    res.json({ success: true, results });
+  } catch (e) {
+    console.error('[API] List push failed:', e.message);
+    res.json({ success: false, error: e.message });
+  }
+});
+
+app.get('/api/lists/:id/export.csv', ensureAuth, async (req, res) => {
+  const listId = parseInt(req.params.id, 10);
+  if (!listId) return res.status(400).send('invalid list id');
+  try {
+    const list = await dataLayer.getListById(listId);
+    if (!list) return res.status(404).send('List not found');
+    const members = await dataLayer.getListMembers(listId);
+
+    const headers = [
+      'First Name', 'Last Name', 'Title', 'Company', 'Email', 'Phone', 'LinkedIn',
+      'State', 'Confidence', 'Pushed to HubSpot',
+      'Project', 'Project Type', 'Project City', 'Project State', 'Source URL',
+      'Contractor', 'Contractor Role', 'Added At'
+    ];
+    const csvEscape = (v) => {
+      const s = v == null ? '' : String(v);
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [headers.map(csvEscape).join(',')];
+    for (const m of members) {
+      lines.push([
+        m.firstName, m.lastName, m.title, m.company, m.email, m.phone, m.linkedin,
+        m.state, m.confidence, m.pushedToHubspot ? 'yes' : 'no',
+        m.projectName, m.projectType, m.projectCity, m.projectState, m.sourceUrl,
+        m.contractorName, m.contractorRole, m.addedAt
+      ].map(csvEscape).join(','));
+    }
+
+    const safeName = list.name.replace(/[^a-z0-9_-]+/gi, '_').slice(0, 60) || `list-${listId}`;
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}.csv"`);
+    res.send(lines.join('\n'));
+  } catch (e) {
+    console.error('[API] List export failed:', e.message);
+    res.status(500).send(`Export failed: ${e.message}`);
+  }
+});
+
+// ── Lists page ──
+app.get('/lists', ensureAuth, (req, res) => {
+  res.render('lists', { user: req.user || { name: 'Local User' }, title: 'Contact Lists', MS365_ENABLED });
 });
 
 // ── API: Run search ──

@@ -107,6 +107,25 @@ CREATE INDEX IF NOT EXISTS idx_contacts_contractor ON contacts(contractor_id);
 CREATE INDEX IF NOT EXISTS idx_contacts_email ON contacts(email);
 CREATE INDEX IF NOT EXISTS idx_contacts_pushed ON contacts(pushed_to_hubspot);
 
+-- Contact lists (shared across team — a "shopping cart" of contacts for campaigns)
+CREATE TABLE IF NOT EXISTS contact_lists (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT DEFAULT '',
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  pushed_at TIMESTAMPTZ,
+  pushed_count INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS contact_list_items (
+  list_id INTEGER NOT NULL REFERENCES contact_lists(id) ON DELETE CASCADE,
+  contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+  added_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (list_id, contact_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_list_items_contact ON contact_list_items(contact_id);
+
 -- Transactions (sales orders + estimates from NetSuite)
 CREATE TABLE IF NOT EXISTS transactions (
   id SERIAL PRIMARY KEY,
@@ -192,6 +211,8 @@ CREATE TABLE IF NOT EXISTS transaction_sync (
 `;
 
 const DROP_TABLES = `
+DROP TABLE IF EXISTS contact_list_items CASCADE;
+DROP TABLE IF EXISTS contact_lists CASCADE;
 DROP TABLE IF EXISTS contacts CASCADE;
 DROP TABLE IF EXISTS contractors CASCADE;
 DROP TABLE IF EXISTS projects CASCADE;

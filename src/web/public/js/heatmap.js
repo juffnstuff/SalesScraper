@@ -35,6 +35,8 @@ let visibleListProjects = []; // filtered view actually rendered (click indices 
 let currentListLocLabel = ''; // cluster's location label, only used for cluster lists
 let sidebarFilter = ''; // current sidebar search term
 let lastListType = null; // 'cluster' or 'stat' — determines how to rebuild on back
+let cachedLists = null;  // [{id, name, memberCount}] — refreshed lazily
+let activeProjectDbId = null; // currently-open project, drives Apollo refreshes
 
 const STATE_CODES = {
   'alabama':'AL','alaska':'AK','arizona':'AZ','arkansas':'AR','california':'CA',
@@ -574,7 +576,10 @@ function showProjectDetail(project) {
   sidebar.innerHTML = html;
 
   // Auto-load any previously saved Apollo contacts for this project
-  if (project._dbId) loadSavedApolloContacts(project._dbId);
+  activeProjectDbId = project._dbId || null;
+  if (project._dbId) {
+    ensureListsLoaded().then(() => loadSavedApolloContacts(project._dbId));
+  }
 }
 
 // ── Contractor Discovery ──
@@ -752,17 +757,110 @@ function renderApolloContacts(contacts, projectId, fresh) {
     if (c.phone) html += `<small class="d-block"><i class="bi bi-telephone"></i> ${escapeHtml(c.phone)}</small>`;
     if (c.linkedin) html += `<small class="d-block"><a href="${escapeHtml(c.linkedin)}" target="_blank">LinkedIn</a></small>`;
 
+    html += '<div class="d-flex flex-wrap gap-1 mt-1 align-items-center">';
     if (pushed) {
-      html += `<div class="mt-1"><span class="badge bg-success" style="font-size:0.65rem;"><i class="bi bi-check-lg"></i> In HubSpot</span></div>`;
+      html += `<span class="badge bg-success" style="font-size:0.65rem;"><i class="bi bi-check-lg"></i> In HubSpot</span>`;
     } else {
-      html += `<button class="btn btn-xs btn-outline-success mt-1" style="font-size:0.7rem; padding:2px 8px;"
+      html += `<button class="btn btn-outline-success" style="font-size:0.7rem; padding:2px 8px;"
                        onclick="pushApolloContact(${c.id}, this)">
-        <i class="bi bi-cloud-upload"></i> Push to HubSpot
+        <i class="bi bi-cloud-upload"></i> Push
       </button>`;
     }
+    html += renderAddToListDropdown(c.id);
+    html += '</div>';
     html += '</div>';
   }
   container.innerHTML = html;
+}
+
+function renderAddToListDropdown(contactId) {
+  const dropdownId = `addToList-${contactId}`;
+  let items = '';
+  if (cachedLists && cachedLists.length > 0) {
+    for (const l of cachedLists) {
+      items += `<li><a class="dropdown-item small" href="#"
+                       onclick="event.preventDefault(); addContactToList(${l.id}, ${contactId}, this)">
+        ${escapeHtml(l.name)}
+        <small class="text-muted">(${l.memberCount})</small>
+      </a></li>`;
+    }
+    items += '<li><hr class="dropdown-divider"></li>';
+  }
+  items += `<li><a class="dropdown-item small text-primary" href="#"
+                   onclick="event.preventDefault(); promptNewListAndAdd(${contactId}, this)">
+    <i class="bi bi-plus-lg"></i> New list...
+  </a></li>`;
+
+  return `<div class="dropdown d-inline-block">
+    <button class="btn btn-outline-primary dropdown-toggle" style="font-size:0.7rem; padding:2px 8px;"
+            type="button" id="${dropdownId}" data-bs-toggle="dropdown" aria-expanded="false">
+      <i class="bi bi-plus-circle"></i> List
+    </button>
+    <ul class="dropdown-menu" aria-labelledby="${dropdownId}" style="max-height: 240px; overflow-y: auto;">
+      ${items}
+    </ul>
+  </div>`;
+}
+
+async function ensureListsLoaded(force) {
+  if (cachedLists && !force) return cachedLists;
+  try {
+    const resp = await fetch('/api/lists');
+    const data = await resp.json();
+    cachedLists = data.success ? (data.lists || []) : [];
+  } catch (e) {
+    console.warn('Lists load failed:', e);
+    cachedLists = [];
+  }
+  return cachedLists;
+}
+
+async function addContactToList(listId, contactId, anchorEl) {
+  try {
+    const resp = await fetch(`/api/lists/${listId}/items`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contactIds: [contactId] })
+    });
+    const data = await resp.json();
+    if (!data.success) {
+      alert(`Add failed: ${data.error}`);
+      return;
+    }
+    // Bump local count and flash confirmation
+    const list = cachedLists && cachedLists.find(l => l.id === listId);
+    if (list && data.added > 0) list.memberCount += data.added;
+    if (anchorEl) {
+      const original = anchorEl.innerHTML;
+      anchorEl.innerHTML = `<i class="bi bi-check2 text-success"></i> Added to "${escapeHtml(list ? list.name : 'list')}"`;
+      setTimeout(() => { anchorEl.innerHTML = original; }, 1400);
+    }
+  } catch (e) {
+    alert(`Add failed: ${e.message}`);
+  }
+}
+
+async function promptNewListAndAdd(contactId, anchorEl) {
+  const name = prompt('Name your new list:');
+  if (!name || !name.trim()) return;
+  try {
+    const resp = await fetch('/api/lists', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name.trim() })
+    });
+    const data = await resp.json();
+    if (!data.success) {
+      alert(`Create failed: ${data.error}`);
+      return;
+    }
+    await ensureListsLoaded(true);
+    await addContactToList(data.list.id, contactId, anchorEl);
+    // Refresh the contact list so every card's dropdown picks up the new list
+    if (activeProjectDbId) loadSavedApolloContacts(activeProjectDbId);
+  } catch (e) {
+    alert(`Create failed: ${e.message}`);
+  }
 }
 
 async function pushApolloContact(contactId, btnEl) {
