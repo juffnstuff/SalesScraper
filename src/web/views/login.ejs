@@ -1,49 +1,86 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sign In — RubberForm Prospecting Engine</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Oswald:wght@300;400;500;600;700&family=Yellowtail&display=swap" rel="stylesheet">
   <link href="/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
   <link href="/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
   <link href="/css/style.css" rel="stylesheet">
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem('rf-theme');
+        if (saved === 'light' || saved === 'dark') {
+          document.documentElement.setAttribute('data-theme', saved);
+        }
+      } catch (e) {}
+    })();
+  </script>
 </head>
-<body class="bg-dark d-flex align-items-center justify-content-center" style="min-height: 100vh;">
-  <div class="text-center">
-    <div class="card shadow-lg" style="width: 400px;">
+<body>
+  <div class="crawler-bar" style="padding: 8px 24px;">
+    <span><span class="star">★</span> Made in Lockport, NY</span>
+    <span>Won't Crack · Won't Crumble · Won't Corrode</span>
+    <span>Since 2006</span>
+  </div>
+
+  <div class="login-shell">
+    <div class="login-card text-center">
       <div class="card-body p-5">
-        <h2 class="mb-1"><i class="bi bi-bullseye text-success"></i></h2>
-        <h4 class="mb-3">RubberForm Prospecting Engine</h4>
-        <p class="text-muted mb-4">AI-powered sales prospecting for the RubberForm team.</p>
+        <a href="/" class="rf-logo" style="align-items: center; margin-bottom: 24px;">
+          <span class="wordmark" style="font-size: 64px;">RFRP</span>
+          <span class="subtitle">Recycled Products</span>
+          <span class="since">since 2006</span>
+        </a>
+
+        <div class="login-eyebrow mt-4 mb-2">— Prospecting Engine —</div>
+        <h4 class="mb-3" style="letter-spacing:0.04em;">Sign In</h4>
+        <p class="text-muted mb-4" style="font-size: 0.9rem;">AI-powered sales prospecting for the RubberForm team.</p>
 
         <% if (error) { %>
-          <div class="alert alert-danger py-2 small"><i class="bi bi-exclamation-triangle"></i> <%= error %></div>
+          <div class="alert alert-danger py-2 small text-start"><i class="bi bi-exclamation-triangle"></i> <%= error %></div>
         <% } %>
 
         <form method="POST" action="/login">
           <div class="mb-3 text-start">
-            <label class="form-label small text-muted" for="username">Username</label>
+            <label class="form-label" for="username">Username</label>
             <input type="text" class="form-control" id="username" name="username" placeholder="e.g. galen, jeff" required autofocus>
           </div>
           <div class="mb-3 text-start">
-            <label class="form-label small text-muted" for="password">Password</label>
+            <label class="form-label" for="password">Password</label>
             <input type="password" class="form-control" id="password" name="password" required>
           </div>
-          <button type="submit" class="btn btn-success btn-lg w-100">
+          <button type="submit" class="btn btn-primary btn-lg w-100">
             <i class="bi bi-box-arrow-in-right"></i> Sign In
           </button>
         </form>
 
         <% if (MS365_ENABLED) { %>
-          <hr class="my-4">
+          <hr class="my-4" style="border-color: var(--rule); opacity: 1;">
           <a href="/auth/signin" class="btn btn-outline-primary w-100">
             <i class="bi bi-microsoft"></i> Sign in with Microsoft 365
           </a>
         <% } %>
 
-        <p class="text-muted mt-3 small">Restricted to RubberForm employees</p>
+        <p class="text-muted mt-4 mb-0" style="font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:0.18em;text-transform:uppercase;">Restricted to RubberForm employees</p>
       </div>
     </div>
   </div>
+
+  <script>
+    // Theme toggle keyboard shortcut: press 'd' to flip theme on login screen
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'd' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
+        var current = document.documentElement.getAttribute('data-theme') || 'dark';
+        var next = current === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem('rf-theme', next); } catch (err) {}
+      }
+    });
+  </script>
 </body>
 </html>

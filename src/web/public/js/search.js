@@ -112,7 +112,7 @@ async function selectProject(index) {
   if (selectedProject.generalContractor) html += `<div><small class="text-muted">GC:</small> ${esc(selectedProject.generalContractor)}</div>`;
   html += '</div><div class="col-md-6">';
   if (selectedProject.sourceUrl) html += `<div><a href="${esc(selectedProject.sourceUrl)}" target="_blank" class="btn btn-sm btn-outline-primary"><i class="bi bi-box-arrow-up-right"></i> Source Article</a></div>`;
-  if (selectedProject.notes) html += `<div class="mt-2 p-2" style="background:#f8fafc; border-radius:6px;"><small class="text-muted">${esc(selectedProject.notes).substring(0, 200)}</small></div>`;
+  if (selectedProject.notes) html += `<div class="notes-callout mt-2 p-2"><small>${esc(selectedProject.notes).substring(0, 200)}</small></div>`;
   html += '</div></div><hr>';
   html += '<div id="contractorsSection"><span class="spinner-border spinner-border-sm"></span> Loading contractors & contacts...</div>';
 

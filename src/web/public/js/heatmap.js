@@ -512,7 +512,7 @@ function showProjectDetail(project) {
 
   // Notes
   if (project.notes) {
-    html += `<div class="mt-2 p-2" style="background:#f8fafc; border-radius:8px;"><small class="text-muted">${escapeHtml(project.notes)}</small></div>`;
+    html += `<div class="notes-callout mt-2 p-2"><small>${escapeHtml(project.notes)}</small></div>`;
   }
 
   // Contractors section

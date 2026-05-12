@@ -1,20 +1,48 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title><%= typeof title !== 'undefined' ? title + ' — ' : '' %>RubberForm Prospecting Engine</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Oswald:wght@300;400;500;600;700&family=Yellowtail&display=swap" rel="stylesheet">
   <link href="/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
   <link href="/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
   <link href="/css/style.css" rel="stylesheet">
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem('rf-theme');
+        if (saved === 'light' || saved === 'dark') {
+          document.documentElement.setAttribute('data-theme', saved);
+        }
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
+  <!-- Top crawler bar (Bold variant) -->
+  <div class="crawler-bar">
+    <span><span class="star">★</span> Made in Lockport, NY</span>
+    <span>RubberForm Prospecting Engine</span>
+    <span>Won't Crack · Won't Crumble · Won't Corrode</span>
+    <span>Since 2006</span>
+  </div>
+
   <!-- Fixed left sidebar -->
   <div class="sidebar" id="sidebar">
+    <div class="app-mark">
+      <span class="app-mark-eyebrow">— the —</span>
+      <span class="app-mark-wordmark">SalesScraper</span>
+      <span class="app-mark-underline"></span>
+    </div>
     <div class="sidebar-brand">
-      <a href="/" class="text-decoration-none">
-        <i class="bi bi-bullseye text-success"></i>
-        <span class="text-white fw-bold">RubberForm</span>
+      <a href="/" class="rf-logo">
+        <span class="rf-logo-kicker">a project by</span>
+        <span class="wordmark">RFRP</span>
+        <span class="subtitle">Recycled Products</span>
+        <span class="since">since 2006</span>
       </a>
     </div>
     <ul class="sidebar-nav">
@@ -27,19 +55,23 @@
     <div class="sidebar-footer">
       <% if (typeof user !== 'undefined' && user) { %>
         <div class="d-flex align-items-center gap-2 mb-2">
-          <i class="bi bi-person-circle text-light"></i>
+          <i class="bi bi-person-circle"></i>
           <div>
-            <div class="text-white small fw-bold"><%= user.name %></div>
+            <div class="small fw-bold" style="font-family:'Oswald',sans-serif;text-transform:uppercase;letter-spacing:0.08em;"><%= user.name %></div>
             <% if (user.role) { %>
-              <span class="badge bg-<%= user.role === 'admin' ? 'warning text-dark' : 'info' %>" style="font-size:0.6rem;"><%= user.role === 'admin' ? 'Admin' : 'Rep' %></span>
+              <span class="badge bg-<%= user.role === 'admin' ? 'warning' : 'info' %>" style="font-size:0.6rem;"><%= user.role === 'admin' ? 'Admin' : 'Rep' %></span>
             <% } %>
           </div>
         </div>
-        <div class="d-flex gap-2">
-          <a href="/change-password" class="btn btn-sm btn-outline-light flex-fill" style="font-size:0.7rem;"><i class="bi bi-key"></i></a>
-          <a href="/logout" class="btn btn-sm btn-outline-light flex-fill" style="font-size:0.7rem;"><i class="bi bi-box-arrow-right"></i> Logout</a>
+        <div class="d-flex gap-2 mb-2">
+          <a href="/change-password" class="btn btn-sm btn-outline-light flex-fill" style="font-size:0.65rem;"><i class="bi bi-key"></i></a>
+          <a href="/logout" class="btn btn-sm btn-outline-light flex-fill" style="font-size:0.65rem;"><i class="bi bi-box-arrow-right"></i> Logout</a>
         </div>
       <% } %>
+      <button type="button" class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+        <i class="bi bi-circle-half"></i>
+        <span class="theme-toggle-label">Dark Mode</span>
+      </button>
     </div>
   </div>
 
@@ -48,7 +80,7 @@
     <button class="btn btn-sm btn-outline-light" onclick="document.getElementById('sidebar').classList.toggle('show')">
       <i class="bi bi-list"></i>
     </button>
-    <span class="text-white fw-bold"><i class="bi bi-bullseye text-success"></i> RubberForm</span>
+    <span class="topbar-title">SalesScraper</span>
   </div>
 
   <!-- Sidebar overlay for mobile -->
@@ -63,4 +95,25 @@
         link.classList.add('active');
       }
     });
+
+    // Theme toggle
+    (function () {
+      var btn = document.getElementById('themeToggle');
+      if (!btn) return;
+      var label = btn.querySelector('.theme-toggle-label');
+      var icon  = btn.querySelector('i');
+      function render() {
+        var t = document.documentElement.getAttribute('data-theme') || 'dark';
+        if (label) label.textContent = t === 'dark' ? 'Dark Mode' : 'Light Mode';
+        if (icon)  icon.className   = t === 'dark' ? 'bi bi-moon-stars' : 'bi bi-sun';
+      }
+      render();
+      btn.addEventListener('click', function () {
+        var current = document.documentElement.getAttribute('data-theme') || 'dark';
+        var next = current === 'dark' ? 'light' : 'dark';
+        document.documentElement.setAttribute('data-theme', next);
+        try { localStorage.setItem('rf-theme', next); } catch (e) {}
+        render();
+      });
+    })();
   </script>
