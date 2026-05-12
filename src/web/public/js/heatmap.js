@@ -541,6 +541,25 @@ function showProjectDetail(project) {
     </div>`;
   }
 
+  // Apollo Contacts section — only available for DB-backed projects
+  if (project._dbId) {
+    const pIdx = allProjects.indexOf(project);
+    const hasSearchTargets = (project.contractors && project.contractors.length > 0)
+      || project.owner || project.generalContractor;
+    html += '<div class="mt-3 border-top pt-2" id="apolloSection">';
+    html += `<strong class="small"><i class="bi bi-person-rolodex text-primary"></i> Apollo Contacts</strong>`;
+    if (hasSearchTargets) {
+      html += `<button class="btn btn-sm btn-outline-primary w-100 mt-2" id="apolloBtn" onclick="findApolloContacts(${pIdx})">
+        <i class="bi bi-search"></i> Find Contacts in Apollo
+      </button>
+      <small class="text-muted d-block text-center mt-1">Searches Apollo for decision-makers at the project's companies</small>`;
+    } else {
+      html += `<div class="mt-1"><small class="text-muted">Run contractor discovery first to enable Apollo search.</small></div>`;
+    }
+    html += '<div id="apolloContacts" class="mt-2"></div>';
+    html += '</div>';
+  }
+
   // Source link
   if (project.sourceUrl) {
     html += `<div class="mt-2"><a href="${escapeHtml(project.sourceUrl)}" target="_blank" class="btn btn-sm btn-outline-primary w-100"><i class="bi bi-box-arrow-up-right"></i> View Source</a></div>`;
@@ -553,6 +572,9 @@ function showProjectDetail(project) {
 
   html += '</div>';
   sidebar.innerHTML = html;
+
+  // Auto-load any previously saved Apollo contacts for this project
+  if (project._dbId) loadSavedApolloContacts(project._dbId);
 }
 
 // ── Contractor Discovery ──
@@ -619,6 +641,187 @@ async function findContractors(projectIdx) {
     btn.innerHTML = `<i class="bi bi-exclamation-triangle"></i> ${msg}`;
     btn.classList.replace('btn-outline-success', 'btn-outline-danger');
     btn.disabled = false;
+  }
+}
+
+// ── Apollo Contact Lookup ──
+async function loadSavedApolloContacts(projectId) {
+  try {
+    const resp = await fetch(`/api/contacts/${projectId}`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (data.success && data.contacts && data.contacts.length > 0) {
+      renderApolloContacts(data.contacts, projectId, /* fresh */ false);
+    }
+  } catch (e) {
+    console.warn('Saved contacts load failed:', e);
+  }
+}
+
+async function findApolloContacts(projectIdx) {
+  const project = allProjects[projectIdx];
+  if (!project || !project._dbId) return;
+
+  const btn = document.getElementById('apolloBtn');
+  const container = document.getElementById('apolloContacts');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Searching Apollo...';
+
+  const stages = [
+    { delay: 4000, text: 'Querying Apollo People Search...' },
+    { delay: 12000, text: 'Matching titles to decision-makers...' },
+    { delay: 25000, text: 'Enriching email & phone...' }
+  ];
+  const timers = stages.map(s => setTimeout(() => {
+    if (btn.disabled) btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> ${s.text}`;
+  }, s.delay));
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 120000);
+
+    const resp = await fetch('/api/contacts/find', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId: project._dbId }),
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+    timers.forEach(t => clearTimeout(t));
+
+    const data = await resp.json();
+    if (!data.success) {
+      btn.innerHTML = `<i class="bi bi-exclamation-triangle"></i> ${data.error || 'Search failed'}`;
+      btn.classList.replace('btn-outline-primary', 'btn-outline-danger');
+      btn.disabled = false;
+      return;
+    }
+
+    if (!data.contacts || data.contacts.length === 0) {
+      btn.innerHTML = `<i class="bi bi-x-circle"></i> ${data.message || 'No contacts found'}`;
+      btn.classList.replace('btn-outline-primary', 'btn-outline-warning');
+      btn.disabled = false;
+      return;
+    }
+
+    btn.innerHTML = `<i class="bi bi-check-circle"></i> Found ${data.contacts.length} contacts`;
+    btn.classList.replace('btn-outline-primary', 'btn-success');
+    // Reload saved-list (server already persisted them) to dedupe with any prior runs
+    await loadSavedApolloContacts(project._dbId);
+  } catch (e) {
+    timers.forEach(t => clearTimeout(t));
+    const msg = e.name === 'AbortError' ? 'Search timed out (120s)' : `Search failed: ${e.message}`;
+    console.error('Apollo search error:', e);
+    btn.innerHTML = `<i class="bi bi-exclamation-triangle"></i> ${msg}`;
+    btn.classList.replace('btn-outline-primary', 'btn-outline-danger');
+    btn.disabled = false;
+  }
+}
+
+function renderApolloContacts(contacts, projectId, fresh) {
+  const container = document.getElementById('apolloContacts');
+  if (!container) return;
+
+  let html = '';
+  html += `<div class="d-flex justify-content-between align-items-center mt-2">
+    <small class="text-muted">${contacts.length} contact${contacts.length === 1 ? '' : 's'}</small>
+    <button class="btn btn-xs btn-outline-primary" style="font-size:0.7rem; padding:2px 8px;"
+            onclick="pushAllApolloContacts(${projectId})">
+      <i class="bi bi-cloud-upload"></i> Push all to HubSpot
+    </button>
+  </div>`;
+
+  for (const c of contacts) {
+    const name = [c.firstName, c.lastName].filter(Boolean).join(' ') || '(name withheld)';
+    const conf = c.confidence ? Math.round(c.confidence * 100) : 0;
+    const pushed = c.pushedToHubspot;
+    html += '<div class="contact-card">';
+    html += `<div class="fw-bold small">${escapeHtml(name)}`;
+    if (conf > 0) html += ` <span class="text-muted" style="font-weight:normal;">· ${conf}%</span>`;
+    html += '</div>';
+    if (c.title) html += `<small class="text-muted d-block">${escapeHtml(c.title)}</small>`;
+    if (c.company) html += `<small class="d-block">${escapeHtml(c.company)}</small>`;
+    if (c.contractorRole) {
+      const roleLabel = c.contractorRole === 'owner' ? 'Project Owner' :
+                        c.contractorRole === 'general_contractor' ? 'General Contractor' :
+                        c.contractorRole;
+      html += `<small class="text-muted d-block"><i class="bi bi-link-45deg"></i> via ${escapeHtml(roleLabel)}</small>`;
+    }
+    if (c.email) html += `<small class="d-block"><i class="bi bi-envelope"></i> ${escapeHtml(c.email)}</small>`;
+    if (c.phone) html += `<small class="d-block"><i class="bi bi-telephone"></i> ${escapeHtml(c.phone)}</small>`;
+    if (c.linkedin) html += `<small class="d-block"><a href="${escapeHtml(c.linkedin)}" target="_blank">LinkedIn</a></small>`;
+
+    if (pushed) {
+      html += `<div class="mt-1"><span class="badge bg-success" style="font-size:0.65rem;"><i class="bi bi-check-lg"></i> In HubSpot</span></div>`;
+    } else {
+      html += `<button class="btn btn-xs btn-outline-success mt-1" style="font-size:0.7rem; padding:2px 8px;"
+                       onclick="pushApolloContact(${c.id}, this)">
+        <i class="bi bi-cloud-upload"></i> Push to HubSpot
+      </button>`;
+    }
+    html += '</div>';
+  }
+  container.innerHTML = html;
+}
+
+async function pushApolloContact(contactId, btnEl) {
+  if (btnEl) {
+    btnEl.disabled = true;
+    btnEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Pushing...';
+  }
+  try {
+    const resp = await fetch('/api/contacts/push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contactIds: [contactId] })
+    });
+    const data = await resp.json();
+    const result = (data.results && data.results[0]) || {};
+    if (result.action === 'failed') {
+      if (btnEl) {
+        btnEl.disabled = false;
+        btnEl.innerHTML = `<i class="bi bi-exclamation-triangle"></i> ${result.error || 'Failed'}`;
+        btnEl.classList.replace('btn-outline-success', 'btn-outline-danger');
+      }
+      return;
+    }
+    if (btnEl) {
+      btnEl.outerHTML = `<div class="mt-1"><span class="badge bg-success" style="font-size:0.65rem;"><i class="bi bi-check-lg"></i> In HubSpot</span></div>`;
+    }
+  } catch (e) {
+    console.error('Push contact error:', e);
+    if (btnEl) {
+      btnEl.disabled = false;
+      btnEl.innerHTML = `<i class="bi bi-exclamation-triangle"></i> ${e.message}`;
+    }
+  }
+}
+
+async function pushAllApolloContacts(projectId) {
+  const buttons = document.querySelectorAll('#apolloContacts button[onclick^="pushApolloContact"]');
+  const contactIds = [];
+  buttons.forEach(b => {
+    const m = b.getAttribute('onclick').match(/pushApolloContact\((\d+)/);
+    if (m) contactIds.push(parseInt(m[1]));
+  });
+  if (contactIds.length === 0) return;
+
+  try {
+    const resp = await fetch('/api/contacts/push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contactIds })
+    });
+    const data = await resp.json();
+    if (data.success) {
+      await loadSavedApolloContacts(projectId);
+    } else {
+      alert(`Push failed: ${data.error || 'unknown error'}`);
+    }
+  } catch (e) {
+    console.error('Bulk push error:', e);
+    alert(`Push failed: ${e.message}`);
   }
 }
 

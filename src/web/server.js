@@ -367,9 +367,23 @@ app.post('/api/contacts/find', ensureAuth, async (req, res) => {
     if (projRows.length === 0) return res.status(404).json({ error: 'Project not found' });
     const project = projRows[0];
 
-    const contractors = await dataLayer.getContractorsForProject(projectId);
-    if (contractors.length === 0) {
-      return res.json({ success: true, contacts: [], message: 'No contractors found — run contractor discovery first' });
+    // Use saved contractors if we have them; otherwise fall back to the
+    // project's owner + general contractor so the heatmap can search Apollo
+    // without first running contractor discovery.
+    let searchTargets = (await dataLayer.getContractorsForProject(projectId))
+      .map(c => ({ id: c.id, name: c.name, role: c.role }));
+
+    if (searchTargets.length === 0) {
+      if (project.owner) searchTargets.push({ id: null, name: project.owner, role: 'owner' });
+      if (project.general_contractor) searchTargets.push({ id: null, name: project.general_contractor, role: 'general_contractor' });
+    }
+
+    if (searchTargets.length === 0) {
+      return res.json({
+        success: true,
+        contacts: [],
+        message: 'No companies on this project yet — run "Find Contractors / Bidders" first.'
+      });
     }
 
     // Default buyer titles for enrichment search
@@ -382,13 +396,13 @@ app.post('/api/contacts/find', ensureAuth, async (req, res) => {
     ];
 
     const allContacts = [];
-    for (const contractor of contractors) {
-      console.log(`[${providerLabel}] Searching: ${contractor.name} (${project.state})`);
-      const found = await enrichment.findContacts(contractor.name, project.state, targetTitles);
-      console.log(`[${providerLabel}] → ${found.length} contacts for ${contractor.name}`);
+    for (const target of searchTargets) {
+      console.log(`[${providerLabel}] Searching: ${target.name} (${project.state})`);
+      const found = await enrichment.findContacts(target.name, project.state, targetTitles);
+      console.log(`[${providerLabel}] → ${found.length} contacts for ${target.name}`);
 
       if (found.length > 0) {
-        const saved = await dataLayer.saveContacts(projectId, contractor.id, found);
+        const saved = await dataLayer.saveContacts(projectId, target.id, found);
         allContacts.push(...saved.map(r => ({
           id: r.id,
           firstName: r.first_name,
@@ -399,13 +413,13 @@ app.post('/api/contacts/find', ensureAuth, async (req, res) => {
           company: r.company,
           linkedin: r.linkedin,
           confidence: parseFloat(r.confidence) || 0,
-          contractorName: contractor.name,
-          contractorRole: contractor.role
+          contractorName: target.name,
+          contractorRole: target.role
         })));
       }
     }
 
-    res.json({ success: true, contacts: allContacts, contractorsSearched: contractors.length });
+    res.json({ success: true, contacts: allContacts, contractorsSearched: searchTargets.length });
   } catch (e) {
     console.error('[API] Contact find failed:', e.message);
     res.json({ success: false, error: e.message, contacts: [] });
