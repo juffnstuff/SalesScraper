@@ -89,14 +89,25 @@ class ApolloClient {
     if (Array.isArray(targetTitles)) {
       for (const t of targetTitles) params.append('person_titles[]', t);
     }
-    if (state) {
-      params.append('person_locations[]', state);
+    const locationParam = normalizeApolloLocation(state);
+    if (locationParam) {
+      params.append('person_locations[]', locationParam);
     }
     if (Array.isArray(opts.seniorities)) {
       for (const s of opts.seniorities) params.append('person_seniorities[]', s);
     }
-    const statuses = opts.emailStatuses || ['verified'];
-    for (const s of statuses) params.append('contact_email_status[]', s);
+    // Email-status filter: opt-in only. Defaulting to ['verified'] (the
+    // previous behaviour) silently dropped every contact whose Apollo email
+    // wasn't recently re-verified, which is most of Apollo's index for
+    // small/regional firms. Set APOLLO_REQUIRE_VERIFIED_EMAIL=true or pass
+    // opts.emailStatuses to re-enable filtering.
+    let statuses = opts.emailStatuses;
+    if (!statuses && process.env.APOLLO_REQUIRE_VERIFIED_EMAIL === 'true') {
+      statuses = ['verified'];
+    }
+    if (Array.isArray(statuses)) {
+      for (const s of statuses) params.append('contact_email_status[]', s);
+    }
     if (opts.includeSimilarTitles === false) {
       params.append('include_similar_titles', 'false');
     }
@@ -106,6 +117,8 @@ class ApolloClient {
     try {
       const res = await this._request('POST', endpoint, null);
       const people = res?.people || [];
+      const totalEntries = res?.pagination?.total_entries;
+      console.log(`  Apollo search: company="${companyName || opts.domain}" loc="${locationParam || ''}" → ${people.length} returned${totalEntries != null ? ` (${totalEntries} total)` : ''}`);
       return people.map(p => this._normalizeSearchPerson(p, companyName, state));
     } catch (e) {
       if (/API_INACCESSIBLE/.test(e.message)) {
@@ -463,6 +476,32 @@ function scoreEnrichedPerson(p, email) {
 
 function safeParse(s) {
   try { return JSON.parse(s); } catch { return s; }
+}
+
+// Apollo's location matcher rejects 2-letter US state codes — "NY" returns
+// zero hits, while "New York" or "United States" works. Expand abbreviations
+// before sending. Anything we can't recognize is passed through unchanged so
+// already-correct values ("Buffalo, New York", etc.) still work.
+const US_STATE_CODE_TO_NAME = {
+  AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California',
+  CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware', DC: 'District of Columbia',
+  FL: 'Florida', GA: 'Georgia', HI: 'Hawaii', ID: 'Idaho', IL: 'Illinois',
+  IN: 'Indiana', IA: 'Iowa', KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana',
+  ME: 'Maine', MD: 'Maryland', MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota',
+  MS: 'Mississippi', MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada',
+  NH: 'New Hampshire', NJ: 'New Jersey', NM: 'New Mexico', NY: 'New York',
+  NC: 'North Carolina', ND: 'North Dakota', OH: 'Ohio', OK: 'Oklahoma',
+  OR: 'Oregon', PA: 'Pennsylvania', RI: 'Rhode Island', SC: 'South Carolina',
+  SD: 'South Dakota', TN: 'Tennessee', TX: 'Texas', UT: 'Utah', VT: 'Vermont',
+  VA: 'Virginia', WA: 'Washington', WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming'
+};
+function normalizeApolloLocation(input) {
+  if (!input) return '';
+  const trimmed = String(input).trim();
+  if (trimmed.length === 2) {
+    return US_STATE_CODE_TO_NAME[trimmed.toUpperCase()] || trimmed;
+  }
+  return trimmed;
 }
 
 module.exports = ApolloClient;
