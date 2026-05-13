@@ -74,7 +74,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   initMap();
-  loadData();
+  await loadData();
+  restoreFromUrl();
 
   document.querySelectorAll('.stage-toggle').forEach(btn => {
     btn.addEventListener('click', () => toggleStage(btn));
@@ -88,7 +89,41 @@ document.addEventListener('DOMContentLoaded', async () => {
       renderSidebarList();
     });
   }
+
+  // Browser back/forward → reapply URL state (open project or close back to default)
+  window.addEventListener('popstate', () => restoreFromUrl({ fromPopstate: true }));
 });
+
+// Read ?project=<dbId> from URL and open it. Used on first load and on popstate.
+function restoreFromUrl(opts = {}) {
+  const params = new URLSearchParams(window.location.search);
+  const projectId = parseInt(params.get('project') || '', 10);
+  if (projectId) {
+    const project = allProjects.find(p => p && p._dbId === projectId);
+    if (project) {
+      showProjectDetail(project, { skipUrlUpdate: true });
+      return;
+    }
+    // Project not found in current dataset (e.g. timeRange filter excluded it).
+    // Drop the stale param so refresh doesn't keep trying.
+    if (!opts.fromPopstate) updateProjectInUrl(null, { replace: true });
+  } else if (opts.fromPopstate) {
+    // Browser-back left no project param — close detail view back to whatever
+    // list state we have, or the stats default.
+    backToList({ skipUrlUpdate: true });
+  }
+}
+
+function updateProjectInUrl(dbId, opts = {}) {
+  const url = new URL(window.location.href);
+  if (dbId) {
+    url.searchParams.set('project', String(dbId));
+  } else {
+    url.searchParams.delete('project');
+  }
+  const method = opts.replace ? 'replaceState' : 'pushState';
+  history[method]({}, '', url.toString());
+}
 
 function initMap() {
   map = L.map('heatmap', {
@@ -426,7 +461,9 @@ function showProjectDetailByIndex(index) {
   if (project) showProjectDetail(project);
 }
 
-function backToList() {
+function backToList(opts = {}) {
+  if (!opts.skipUrlUpdate) updateProjectInUrl(null);
+  activeProjectDbId = null;
   // Re-render the existing list (preserves any active filter) rather than
   // rebuilding — so the user's search survives a detail-view round-trip.
   // Works for three cases: an active stat/cluster list, a pure global-search
@@ -439,7 +476,10 @@ function backToList() {
 }
 
 // ── Project Detail (marker click or list click) ──
-function showProjectDetail(project) {
+function showProjectDetail(project, opts = {}) {
+  if (!opts.skipUrlUpdate && project && project._dbId) {
+    updateProjectInUrl(project._dbId);
+  }
   const sidebar = document.getElementById('sidebarContent');
   const title = document.getElementById('sidebarTitle');
   const stage = project.lifecycleStage || 'construction';
