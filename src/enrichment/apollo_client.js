@@ -89,8 +89,17 @@ class ApolloClient {
     if (Array.isArray(targetTitles)) {
       for (const t of targetTitles) params.append('person_titles[]', t);
     }
+    // person_locations[] filters by where the PERSON lives, not where the
+    // company operates. For company-bound searches that intersection routinely
+    // returns zero — small-company employees are scattered across states. Skip
+    // location entirely when we have a company target, unless the caller
+    // explicitly opts in via opts.applyLocation=true. Pure title+location
+    // searches (no companyName, no domain) still get the location filter so
+    // results aren't unbounded.
     const locationParam = normalizeApolloLocation(state);
-    if (locationParam) {
+    const haveCompanyTarget = !!(companyName || opts.domain);
+    const applyLocation = opts.applyLocation === true || !haveCompanyTarget;
+    if (locationParam && applyLocation) {
       params.append('person_locations[]', locationParam);
     }
     if (Array.isArray(opts.seniorities)) {
@@ -118,7 +127,8 @@ class ApolloClient {
       const res = await this._request('POST', endpoint, null);
       const people = res?.people || [];
       const totalEntries = res?.pagination?.total_entries;
-      console.log(`  Apollo search: company="${companyName || opts.domain}" loc="${locationParam || ''}" → ${people.length} returned${totalEntries != null ? ` (${totalEntries} total)` : ''}`);
+      const locTag = applyLocation && locationParam ? `loc="${locationParam}"` : 'loc=(unfiltered)';
+      console.log(`  Apollo search: company="${companyName || opts.domain}" ${locTag} → ${people.length} returned${totalEntries != null ? ` (${totalEntries} total)` : ''}`);
       return people.map(p => this._normalizeSearchPerson(p, companyName, state));
     } catch (e) {
       if (/API_INACCESSIBLE/.test(e.message)) {

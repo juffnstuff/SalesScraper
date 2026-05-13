@@ -190,6 +190,33 @@ function loadRunLogs(repId) {
     .filter(Boolean);
 }
 
+// Catch placeholder strings news scrapers sometimes drop into the owner /
+// general_contractor field. Anything matching is excluded from Apollo
+// searches — they always return zero and just waste API calls.
+const JUNK_COMPANY_PATTERNS = [
+  /^not\s+publicly\s+disclosed$/i,
+  /^not\s+disclosed$/i,
+  /^undisclosed$/i,
+  /^unknown$/i,
+  /^n\/?a$/i,
+  /^none$/i,
+  /^tbd$/i,
+  /^to\s+be\s+determined$/i,
+  /^various$/i,
+  /^multiple$/i,
+  /^pending$/i,
+  /^confidential$/i,
+  /^anonymous$/i,
+  /^private$/i,
+  /^withheld$/i
+];
+function isJunkCompanyName(name) {
+  if (!name || typeof name !== 'string') return true;
+  const trimmed = name.trim();
+  if (trimmed.length < 3) return true;
+  return JUNK_COMPANY_PATTERNS.some(rx => rx.test(trimmed));
+}
+
 // ── Estimate status classifier ──
 function classifyEstimateStatus(statusDisplay, lostReason) {
   if (!statusDisplay) return 'open';
@@ -378,11 +405,29 @@ app.post('/api/contacts/find', ensureAuth, async (req, res) => {
       if (project.general_contractor) searchTargets.push({ id: null, name: project.general_contractor, role: 'general_contractor' });
     }
 
+    // Drop junk target names that news scrapers occasionally write into the
+    // owner/general_contractor field — "Not publicly disclosed", "TBD", etc.
+    // Apollo would happily search for them and return 0; we just waste a
+    // round-trip and clutter logs.
+    const skippedTargets = [];
+    searchTargets = searchTargets.filter(t => {
+      if (isJunkCompanyName(t.name)) {
+        skippedTargets.push(t.name);
+        return false;
+      }
+      return true;
+    });
+    if (skippedTargets.length > 0) {
+      console.log(`[${providerLabel}] Skipped junk company names: ${skippedTargets.join(', ')}`);
+    }
+
     if (searchTargets.length === 0) {
       return res.json({
         success: true,
         contacts: [],
-        message: 'No companies on this project yet — run "Find Contractors / Bidders" first.'
+        message: skippedTargets.length > 0
+          ? `Only placeholder company names on this project (${skippedTargets.join(', ')}). Run "Find Contractors / Bidders" to identify real companies.`
+          : 'No companies on this project yet — run "Find Contractors / Bidders" first.'
       });
     }
 
