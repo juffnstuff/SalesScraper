@@ -63,6 +63,96 @@ function normalizeState(state) {
 
 const US_STATES_GEOJSON = '/data/us-states.json';
 
+// ── sessionStorage keys for view persistence across sidebar nav ──
+const SESSION_KEY_ACTIVE_PROJECT = 'heatmap.activeProjectId';
+const SESSION_KEY_LIST_CONTEXT = 'heatmap.listContext';
+const SESSION_KEY_MAP_VIEW = 'heatmap.mapView';
+const SESSION_KEY_ACTIVE_STAGES = 'heatmap.activeStages';
+
+function saveMapView() {
+  if (!map) return;
+  try {
+    const c = map.getCenter();
+    sessionStorage.setItem(SESSION_KEY_MAP_VIEW, JSON.stringify({
+      lat: c.lat, lng: c.lng, zoom: map.getZoom()
+    }));
+  } catch (e) { /* sessionStorage can be disabled */ }
+}
+function restoreMapView() {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY_MAP_VIEW);
+    if (!raw || !map) return;
+    const v = JSON.parse(raw);
+    if (typeof v.lat === 'number' && typeof v.lng === 'number' && typeof v.zoom === 'number') {
+      map.setView([v.lat, v.lng], v.zoom);
+    }
+  } catch (e) {}
+}
+function saveActiveStages() {
+  try { sessionStorage.setItem(SESSION_KEY_ACTIVE_STAGES, JSON.stringify(activeStages)); } catch (e) {}
+}
+function restoreActiveStages() {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY_ACTIVE_STAGES);
+    if (!raw) return;
+    const v = JSON.parse(raw) || {};
+    Object.assign(activeStages, v);
+    document.querySelectorAll('.stage-toggle').forEach(btn => {
+      const st = btn.dataset.stage;
+      if (!st) return;
+      if (activeStages[st]) { btn.classList.add('active'); btn.style.opacity = '1'; }
+      else                  { btn.classList.remove('active'); btn.style.opacity = '0.4'; }
+    });
+    // Layer visibility is re-applied when updateMap runs after loadData.
+  } catch (e) {}
+}
+function saveListContext() {
+  try {
+    const ctx = {
+      type: lastListType,
+      stage: lastViewedStage,
+      locLabel: currentListLocLabel,
+      // For cluster lists, snapshot the project IDs so we can rebuild after
+      // a full page load (clustering output isn't reconstructible by stage alone).
+      projectIds: lastListType === 'cluster'
+        ? currentListProjects.map(p => p && p._dbId).filter(Boolean)
+        : [],
+      filter: sidebarFilter || ''
+    };
+    if (!ctx.type && !ctx.filter) sessionStorage.removeItem(SESSION_KEY_LIST_CONTEXT);
+    else sessionStorage.setItem(SESSION_KEY_LIST_CONTEXT, JSON.stringify(ctx));
+  } catch (e) {}
+}
+// Populates the in-memory list variables from sessionStorage WITHOUT rendering
+// anything to the sidebar. The list materializes only when the user clicks
+// "Back to list" from a project detail panel — at which point backToList()
+// reads these vars and calls renderSidebarList().
+function loadListContextIntoMemory() {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY_LIST_CONTEXT);
+    if (!raw) return;
+    const ctx = JSON.parse(raw) || {};
+    lastViewedStage = ctx.stage || null;
+    lastListType = ctx.type || null;
+    currentListLocLabel = ctx.locLabel || '';
+    sidebarFilter = ctx.filter || '';
+
+    if (ctx.type === 'stat' && ctx.stage) {
+      currentListProjects = ctx.stage === 'all'
+        ? allProjects
+        : allProjects.filter(p => getVerts(p).includes(ctx.stage));
+    } else if (ctx.type === 'cluster' && Array.isArray(ctx.projectIds)) {
+      currentListProjects = ctx.projectIds
+        .map(id => allProjects.find(p => p && p._dbId === id))
+        .filter(Boolean);
+    }
+    if (sidebarFilter) {
+      const inp = document.getElementById('sidebarSearch');
+      if (inp) inp.value = sidebarFilter;
+    }
+  } catch (e) {}
+}
+
 // ── Initialize ──
 document.addEventListener('DOMContentLoaded', async () => {
   try {
@@ -74,7 +164,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   initMap();
+  restoreActiveStages();
+  restoreMapView();
   await loadData();
+  loadListContextIntoMemory();
   restoreFromUrl();
 
   document.querySelectorAll('.stage-toggle').forEach(btn => {
@@ -87,6 +180,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     searchInput.addEventListener('input', () => {
       sidebarFilter = searchInput.value;
       renderSidebarList();
+      saveListContext();
     });
   }
 
@@ -99,7 +193,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 //   - sessionStorage       → survives sidebar nav (Lists ↔ Heat Map), which
 //                            does a full page load and strips the query string
 // URL is checked first; sessionStorage is the fallback.
-const SESSION_KEY_ACTIVE_PROJECT = 'heatmap.activeProjectId';
 
 // Read ?project=<dbId> from URL (or sessionStorage fallback) and open it.
 function restoreFromUrl(opts = {}) {
@@ -220,6 +313,8 @@ function initMap() {
 
     map.addLayer(markerLayers[stage]);
   }
+
+  map.on('moveend zoomend', saveMapView);
 }
 
 async function loadData() {
@@ -356,6 +451,7 @@ function showClusterList(projects, stage) {
 
   resetSidebarFilter();
   renderSidebarList();
+  saveListContext();
 }
 
 // ── Project List (clickable stat cards) ──
@@ -369,6 +465,7 @@ function showProjectList(stage) {
 
   resetSidebarFilter();
   renderSidebarList();
+  saveListContext();
 }
 
 // Fields scanned by the sidebar search — AI-extracted title + summary blurb
@@ -1004,6 +1101,7 @@ function toggleStage(btn) {
     btn.style.opacity = '0.4';
     if (map.hasLayer(markerLayers[stage])) map.removeLayer(markerLayers[stage]);
   }
+  saveActiveStages();
 }
 
 // ── Helpers ──
