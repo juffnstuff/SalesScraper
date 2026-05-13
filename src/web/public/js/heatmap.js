@@ -94,18 +94,39 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.addEventListener('popstate', () => restoreFromUrl({ fromPopstate: true }));
 });
 
-// Read ?project=<dbId> from URL and open it. Used on first load and on popstate.
+// Project selection persistence layers:
+//   - URL ?project=<id>   → shareable, refresh-stable, browser back/forward
+//   - sessionStorage       → survives sidebar nav (Lists ↔ Heat Map), which
+//                            does a full page load and strips the query string
+// URL is checked first; sessionStorage is the fallback.
+const SESSION_KEY_ACTIVE_PROJECT = 'heatmap.activeProjectId';
+
+// Read ?project=<dbId> from URL (or sessionStorage fallback) and open it.
 function restoreFromUrl(opts = {}) {
   const params = new URLSearchParams(window.location.search);
-  const projectId = parseInt(params.get('project') || '', 10);
+  let projectId = parseInt(params.get('project') || '', 10);
+  let needsUrlSync = false;
+  if (!projectId && !opts.fromPopstate) {
+    const stored = sessionStorage.getItem(SESSION_KEY_ACTIVE_PROJECT);
+    const parsed = parseInt(stored || '', 10);
+    if (parsed) {
+      projectId = parsed;
+      needsUrlSync = true; // came from sessionStorage; push it to the URL too
+    }
+  }
+
   if (projectId) {
     const project = allProjects.find(p => p && p._dbId === projectId);
     if (project) {
-      showProjectDetail(project, { skipUrlUpdate: true });
+      // Keep both layers in sync regardless of which one we restored from.
+      writeActiveProjectToSession(projectId);
+      if (needsUrlSync) updateProjectInUrl(projectId, { replace: true });
+      showProjectDetail(project, { skipUrlUpdate: true, skipSessionUpdate: true });
       return;
     }
-    // Project not found in current dataset (e.g. timeRange filter excluded it).
-    // Drop the stale param so refresh doesn't keep trying.
+    // Project not in current dataset (e.g. timeRange filter excluded it). Drop
+    // both stores so we don't keep re-trying on every reload.
+    writeActiveProjectToSession(null);
     if (!opts.fromPopstate) updateProjectInUrl(null, { replace: true });
   } else if (opts.fromPopstate) {
     // Browser-back left no project param — close detail view back to whatever
@@ -116,13 +137,17 @@ function restoreFromUrl(opts = {}) {
 
 function updateProjectInUrl(dbId, opts = {}) {
   const url = new URL(window.location.href);
-  if (dbId) {
-    url.searchParams.set('project', String(dbId));
-  } else {
-    url.searchParams.delete('project');
-  }
+  if (dbId) url.searchParams.set('project', String(dbId));
+  else url.searchParams.delete('project');
   const method = opts.replace ? 'replaceState' : 'pushState';
   history[method]({}, '', url.toString());
+}
+
+function writeActiveProjectToSession(dbId) {
+  try {
+    if (dbId) sessionStorage.setItem(SESSION_KEY_ACTIVE_PROJECT, String(dbId));
+    else sessionStorage.removeItem(SESSION_KEY_ACTIVE_PROJECT);
+  } catch (e) { /* sessionStorage can be disabled — fall back gracefully */ }
 }
 
 function initMap() {
@@ -463,6 +488,7 @@ function showProjectDetailByIndex(index) {
 
 function backToList(opts = {}) {
   if (!opts.skipUrlUpdate) updateProjectInUrl(null);
+  if (!opts.skipSessionUpdate) writeActiveProjectToSession(null);
   activeProjectDbId = null;
   // Re-render the existing list (preserves any active filter) rather than
   // rebuilding — so the user's search survives a detail-view round-trip.
@@ -477,8 +503,9 @@ function backToList(opts = {}) {
 
 // ── Project Detail (marker click or list click) ──
 function showProjectDetail(project, opts = {}) {
-  if (!opts.skipUrlUpdate && project && project._dbId) {
-    updateProjectInUrl(project._dbId);
+  if (project && project._dbId) {
+    if (!opts.skipUrlUpdate) updateProjectInUrl(project._dbId);
+    if (!opts.skipSessionUpdate) writeActiveProjectToSession(project._dbId);
   }
   const sidebar = document.getElementById('sidebarContent');
   const title = document.getElementById('sidebarTitle');
