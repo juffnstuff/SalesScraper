@@ -532,18 +532,22 @@ async function saveContacts(projectId, contractorId, contacts) {
 
   const saved = [];
   for (const c of contacts) {
-    if (!c.email && !c.lastName) continue;
+    if (!c.email && !c.lastName && !c.providerPersonId) continue;
     try {
       const { rows } = await db.query(`
-        INSERT INTO contacts (project_id, contractor_id, first_name, last_name, email, phone, title, company, linkedin, state, confidence, source)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        INSERT INTO contacts (
+          project_id, contractor_id, first_name, last_name, email, phone,
+          title, company, linkedin, state, confidence, source, provider_person_id
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         ON CONFLICT DO NOTHING
         RETURNING *
       `, [
         projectId, contractorId || null,
         c.firstName || '', c.lastName || '', c.email || '', c.phone || '',
         c.title || '', c.company || '', c.linkedIn || c.linkedin || '',
-        c.state || '', c.confidence || 0, c.source || 'selling.com'
+        c.state || '', c.confidence || 0, c.source || 'apollo.io',
+        c.providerPersonId || ''
       ]);
       if (rows.length > 0) saved.push(rows[0]);
     } catch (e) {
@@ -551,6 +555,59 @@ async function saveContacts(projectId, contractorId, contacts) {
     }
   }
   return saved;
+}
+
+// Enrichment-eligible: has an Apollo person ID, not yet enriched (or enriched
+// without producing an email — retry path is a future polish).
+async function getEnrichableListMembers(listId) {
+  if (!(await db.isReady())) return [];
+  const { rows } = await db.query(`
+    SELECT ct.*
+    FROM contact_list_items cli
+    JOIN contacts ct ON cli.contact_id = ct.id
+    WHERE cli.list_id = $1
+      AND COALESCE(ct.provider_person_id, '') <> ''
+      AND ct.enriched_at IS NULL
+  `, [listId]);
+  return rows;
+}
+
+// Applies Apollo's enrichment payload back onto a contact row.
+async function updateContactFromEnrichment(contactId, enriched) {
+  if (!(await db.isReady())) return null;
+  const { rows } = await db.query(`
+    UPDATE contacts SET
+      first_name = COALESCE(NULLIF($2, ''), first_name),
+      last_name = COALESCE(NULLIF($3, ''), last_name),
+      email = COALESCE(NULLIF($4, ''), email),
+      phone = COALESCE(NULLIF($5, ''), phone),
+      linkedin = COALESCE(NULLIF($6, ''), linkedin),
+      title = COALESCE(NULLIF($7, ''), title),
+      email_verified = $8,
+      email_verify_reason = $9,
+      confidence = GREATEST(confidence, $10),
+      enriched_at = NOW()
+    WHERE id = $1
+    RETURNING *
+  `, [
+    contactId,
+    enriched.firstName || '',
+    enriched.lastName || '',
+    enriched.email || '',
+    enriched.phone || '',
+    enriched.linkedIn || enriched.linkedin || '',
+    enriched.title || '',
+    enriched.emailStatus === 'verified',
+    enriched.emailStatus || '',
+    enriched.confidence || 0
+  ]);
+  return rows[0] || null;
+}
+
+// Stamp enriched_at even on a no-match so we don't keep retrying.
+async function markContactEnrichAttempted(contactId) {
+  if (!(await db.isReady())) return;
+  await db.query('UPDATE contacts SET enriched_at = NOW() WHERE id = $1', [contactId]);
 }
 
 async function getContactsForProject(projectId) {
@@ -678,6 +735,8 @@ async function getListMembers(listId) {
     confidence: parseFloat(r.confidence) || 0,
     pushedToHubspot: r.pushed_to_hubspot,
     hubspotContactId: r.hubspot_contact_id,
+    providerPersonId: r.provider_person_id || '',
+    enrichedAt: r.enriched_at,
     contractorName: r.contractor_name || '',
     contractorRole: r.contractor_role || '',
     projectId: r.proj_id,
@@ -720,5 +779,6 @@ module.exports = {
   saveContacts, getContactsForProject, markContactPushed, assignContactRep,
   getLists, createList, deleteList, getListById,
   addContactsToList, removeContactFromList, getListMembers,
-  markListPushed, getListsForContact
+  markListPushed, getListsForContact,
+  getEnrichableListMembers, updateContactFromEnrichment, markContactEnrichAttempted
 };

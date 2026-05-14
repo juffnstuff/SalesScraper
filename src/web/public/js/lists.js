@@ -98,6 +98,8 @@ function renderListDetail(list, members) {
   const container = document.getElementById('listDetail');
   const pushable = members.filter(m => !m.pushedToHubspot).length;
   const pushed = members.filter(m => m.pushedToHubspot).length;
+  const enrichable = members.filter(m => m.providerPersonId && !m.enrichedAt).length;
+  const enriched = members.filter(m => m.enrichedAt).length;
 
   let html = `
     <div class="card mb-3">
@@ -107,14 +109,18 @@ function renderListDetail(list, members) {
             <h5 class="mb-1">${escapeHtml(list.name)}</h5>
             ${list.description ? `<p class="text-muted mb-2">${escapeHtml(list.description)}</p>` : ''}
             <small class="text-muted">${members.length} contact${members.length === 1 ? '' : 's'}
+              ${enriched > 0 ? ` · <span class="text-primary">${enriched} enriched</span>` : ''}
               ${pushed > 0 ? ` · <span class="text-success">${pushed} in HubSpot</span>` : ''}
               ${list.pushedAt ? ` · last pushed ${new Date(list.pushedAt).toLocaleDateString()}` : ''}
             </small>
           </div>
-          <div class="d-flex gap-2">
+          <div class="d-flex gap-2 flex-wrap">
             <a href="/api/lists/${list.id}/export.csv" class="btn btn-sm btn-outline-secondary">
               <i class="bi bi-download"></i> CSV
             </a>
+            <button class="btn btn-sm btn-primary" ${enrichable === 0 ? 'disabled' : ''} onclick="enrichList(${list.id}, ${enrichable})" title="Reveal email, phone, and full name via Apollo (~1 credit each)">
+              <i class="bi bi-magic"></i> Enrich ${enrichable}
+            </button>
             <button class="btn btn-sm btn-success" ${pushable === 0 ? 'disabled' : ''} onclick="pushList(${list.id})">
               <i class="bi bi-cloud-upload"></i> Push ${pushable} to HubSpot
             </button>
@@ -142,10 +148,14 @@ function renderListDetail(list, members) {
     for (const m of members) {
       const name = [m.firstName, m.lastName].filter(Boolean).join(' ') || '<em>(no name)</em>';
       const projLabel = m.projectName ? `${escapeHtml(m.projectName)}<br><small class="text-muted">${escapeHtml([m.projectCity, m.projectState].filter(Boolean).join(', '))}</small>` : '';
+      const badges = [];
+      if (m.enrichedAt) badges.push('<span class="badge bg-primary" style="font-size:0.6rem;">Enriched</span>');
+      else if (m.providerPersonId) badges.push('<span class="badge bg-secondary" style="font-size:0.6rem;">Needs enrich</span>');
+      if (m.pushedToHubspot) badges.push('<span class="badge bg-success" style="font-size:0.6rem;">In HubSpot</span>');
       html += `<tr>
         <td>
           <div>${name}</div>
-          ${m.pushedToHubspot ? '<span class="badge bg-success" style="font-size:0.6rem;">In HubSpot</span>' : ''}
+          ${badges.join(' ')}
         </td>
         <td><small>${escapeHtml(m.title || '')}</small></td>
         <td><small>${escapeHtml(m.company || m.contractorName || '')}</small></td>
@@ -163,6 +173,44 @@ function renderListDetail(list, members) {
   }
 
   container.innerHTML = html;
+}
+
+async function enrichList(listId, enrichableCount) {
+  const ok = confirm(
+    `Enrich ${enrichableCount} contact${enrichableCount === 1 ? '' : 's'} via Apollo?\n\n` +
+    `This will reveal real last name, email, phone, and LinkedIn for each.\n` +
+    `Cost: ~${enrichableCount} Apollo credit${enrichableCount === 1 ? '' : 's'} (1 per contact).\n\n` +
+    `Already-enriched contacts are skipped.`
+  );
+  if (!ok) return;
+
+  const allButtons = document.querySelectorAll('#listDetail button');
+  allButtons.forEach(b => { b.disabled = true; });
+  const enrichBtn = Array.from(allButtons).find(b => b.textContent.includes('Enrich'));
+  const originalHtml = enrichBtn ? enrichBtn.innerHTML : '';
+  if (enrichBtn) enrichBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Enriching...';
+
+  try {
+    const resp = await fetch(`/api/lists/${listId}/enrich`, { method: 'POST' });
+    const data = await resp.json();
+    if (!data.success) {
+      alert(`Enrichment failed: ${data.error}`);
+      return;
+    }
+    const s = data.summary || {};
+    alert(
+      `Enrichment complete.\n\n` +
+      `Attempted: ${s.attempted || 0}\n` +
+      `Enriched:  ${s.enriched || 0}\n` +
+      `With email: ${s.withEmail || 0}`
+    );
+    selectList(listId);
+  } catch (e) {
+    alert(`Enrichment failed: ${e.message}`);
+  } finally {
+    if (enrichBtn) enrichBtn.innerHTML = originalHtml;
+    allButtons.forEach(b => { b.disabled = false; });
+  }
 }
 
 async function pushList(listId) {

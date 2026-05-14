@@ -665,6 +665,78 @@ app.post('/api/lists/:id/push', ensureAuth, async (req, res) => {
   }
 });
 
+// Enrich list members via Apollo's /people/match. Skips members already
+// enriched and members without a provider_person_id (i.e. legacy rows saved
+// before we started persisting the Apollo ID). Each call costs ~1 credit.
+app.post('/api/lists/:id/enrich', ensureAuth, async (req, res) => {
+  const listId = parseInt(req.params.id, 10);
+  if (!listId) return res.status(400).json({ success: false, error: 'invalid list id' });
+
+  try {
+    const { createEnrichmentClient, ApolloClient } = require('../enrichment');
+    const enrichment = createEnrichmentClient();
+    if (!enrichment.hasKey()) {
+      return res.json({ success: false, error: 'Apollo API key not configured' });
+    }
+
+    const eligible = await dataLayer.getEnrichableListMembers(listId);
+    if (eligible.length === 0) {
+      return res.json({
+        success: true,
+        results: [],
+        message: 'No members eligible for enrichment (all already enriched, or missing Apollo person ID).'
+      });
+    }
+
+    const apolloRaw = enrichment instanceof ApolloClient ? enrichment : null;
+    const results = [];
+    for (const row of eligible) {
+      try {
+        const resp = await enrichment.enrichContact({ id: row.provider_person_id });
+        const person = resp?.person;
+        if (!person) {
+          await dataLayer.markContactEnrichAttempted(row.id);
+          results.push({ contactId: row.id, action: 'no_match' });
+          continue;
+        }
+        // Normalize via the Apollo client's helper so the field names line up.
+        const normalized = apolloRaw
+          ? apolloRaw._normalizeEnrichedPerson(person, row.company, row.state)
+          : {
+              firstName: person.first_name || '',
+              lastName: person.last_name || '',
+              email: person.email || '',
+              phone: '',
+              linkedIn: person.linkedin_url || '',
+              title: person.title || '',
+              emailStatus: person.email_status || '',
+              confidence: 0
+            };
+        const updated = await dataLayer.updateContactFromEnrichment(row.id, normalized);
+        results.push({
+          contactId: row.id,
+          action: 'enriched',
+          email: updated?.email || '',
+          phone: updated?.phone || '',
+          emailStatus: normalized.emailStatus || ''
+        });
+      } catch (e) {
+        await dataLayer.markContactEnrichAttempted(row.id);
+        results.push({ contactId: row.id, action: 'failed', error: e.message });
+      }
+    }
+
+    const enrichedCount = results.filter(r => r.action === 'enriched').length;
+    const withEmail = results.filter(r => r.email).length;
+    console.log(`[apollo] List ${listId} enrichment: ${enrichedCount}/${eligible.length} enriched, ${withEmail} with email`);
+
+    res.json({ success: true, results, summary: { attempted: eligible.length, enriched: enrichedCount, withEmail } });
+  } catch (e) {
+    console.error('[API] List enrich failed:', e.message);
+    res.json({ success: false, error: e.message });
+  }
+});
+
 app.get('/api/lists/:id/export.csv', ensureAuth, async (req, res) => {
   const listId = parseInt(req.params.id, 10);
   if (!listId) return res.status(400).send('invalid list id');

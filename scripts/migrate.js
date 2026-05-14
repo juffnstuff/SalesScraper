@@ -99,6 +99,8 @@ CREATE TABLE IF NOT EXISTS contacts (
   pushed_at TIMESTAMPTZ,
   assigned_rep TEXT DEFAULT '',
   source TEXT DEFAULT 'selling.com',
+  provider_person_id TEXT DEFAULT '',
+  enriched_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -412,6 +414,13 @@ async function reclassifyVerticals() {
   await pool.query('ALTER TABLE transactions ADD COLUMN IF NOT EXISTS lng NUMERIC');
   // had_quote flag: true if this sales order originated from an estimate
   await pool.query('ALTER TABLE transactions ADD COLUMN IF NOT EXISTS had_quote BOOLEAN DEFAULT FALSE');
+
+  // Apollo two-stage flow: search returns a person ID; enrichment uses it to
+  // pull the real email/phone/last name. Both columns are nullable / empty
+  // for pre-feature rows.
+  await pool.query(`ALTER TABLE contacts ADD COLUMN IF NOT EXISTS provider_person_id TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE contacts ADD COLUMN IF NOT EXISTS enriched_at TIMESTAMPTZ`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_contacts_provider_id ON contacts(provider_person_id) WHERE provider_person_id <> ''`);
 
   // Flag sales orders that have a matching converted estimate (same customer)
   await pool.query(`
