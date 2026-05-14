@@ -6,7 +6,6 @@ logs/runs/*.json
 *.log
 .DS_Store
 
-# Generated ICP markdown export. Regenerate any time with:
-#   node scripts/export_icps.js
-# Remove this line if you want to track a snapshot in the repo.
-ICPs.md
+# ICPs.md is a generated artifact (run `node scripts/export_icps.js` to
+# regenerate). Tracked in the repo as a readable snapshot — re-run after
+# ICPs refresh on their 30-day cache cycle to keep it current.
