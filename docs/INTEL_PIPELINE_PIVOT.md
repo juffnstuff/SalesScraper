@@ -1,8 +1,54 @@
 # Repurposing the SalesScraper Intel Pipeline for Market Intelligence
 
-> **Status:** Strategy document only. No implementation yet.
+> **Status:** Plays 2 and 3 have a first implementation landed (2026-06-25). Play 1 (standalone CapEx Tracker) and the Phase 0 shared-package extraction are still not started — see status below.
 > **Author context:** Drafted for a follow-up Claude Code session where this repo (SalesScraper) is connected alongside TRDESK (trading cockpit) and RFMKT (market regime / economy analyzer).
-> **Last updated:** 2026-05-14
+> **Last updated:** 2026-06-25
+
+---
+
+## Implementation status (2026-06-25)
+
+Built directly into the consuming apps rather than as a shared package first — the
+pivot doc's "build a small POC before any extraction" step. Each app reuses its
+OWN existing Claude client and DB layer (no fork, no new package yet), which is
+the low-risk way to validate the engine on tickers before the Phase 0 extraction.
+
+**Play 2 — TRDESK per-ticker intel feed: DONE (v1).**
+- `server/migrations/046_intel_feed.sql` — `intel_feed` table. Provenance is
+  enforced at the DB layer: `source_url` and `extracted_quote` are NOT NULL.
+- `server/services/claude.js` `extractTickerIntel()` + `INTEL_FEED_SYSTEM` prompt
+  — one web_search-grounded classify call per ticker; drops any event missing a
+  URL or verbatim quote before it can reach the DB.
+- `server/services/intelFeed.js` — the two-stage cost discipline: CORE names
+  (held + primary watchlist) always get the paid search; long-tail sector-list
+  names only when a cheap `news_sentiment` pre-filter trips. Hard cap on paid
+  calls per pass (`INTEL_MAX_EXTRACTIONS`).
+- `server/routes/intel.js` — `GET /api/intel/:symbol`, `GET /api/intel/counts`,
+  `POST /api/intel/:id/flag`, `POST /api/admin/intel/ingest`.
+- Scheduler: one pre-open weekday pass (`INTEL_SLOT`, default 07:45 ET), gated by
+  `INTEL_FEED_ENABLED` + `ANTHROPIC_API_KEY`.
+- Client: new "Intel" tab (`client/src/components/IntelPanel.jsx`) on the symbol
+  detail drawer — severity chip, event type, source link, and the verbatim quote;
+  Mark-actionable / Mute feedback loop.
+
+**Play 3 — RFMKT leading-indicator stack: DONE (v1, advisory).**
+- `leading_indicators` table (in the auto-migrate block); `source_url` +
+  `source_quote` NOT NULL.
+- `refreshLeadingIndicators()` — daily Claude web_search pass aggregating layoffs,
+  construction starts, building permits, bond issuance, plant closures, and
+  strike threats into a per-period series with provenance.
+- New regime input `macro_leads` (scored -2..+2 via `scoreLeadingIndicators()`).
+  **Advisory by default** — surfaced in `/api/regime`, `/api/exports/all`, and the
+  regime tab, but NOT counted in the composite until `REGIME_LEADS_LIVE=true`.
+  This is deliberate: the composite thresholds were calibrated on 8 inputs, and
+  the doc's "backtest before you trade" rule says a new live input must be
+  walk-forward / out-of-sample validated first.
+- `GET /api/leading-indicators` + `POST /api/leading-indicators/refresh`.
+
+**Still open:** Phase 0 engine extraction into `@rubberform/intel-pipeline`
+(the two apps currently duplicate the web_search + provenance pattern); Play 1
+CapEx Tracker; the 80%-catch-rate validation; backtest before flipping
+`REGIME_LEADS_LIVE` on.
 
 ---
 
