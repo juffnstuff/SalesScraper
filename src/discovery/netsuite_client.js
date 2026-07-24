@@ -407,6 +407,8 @@ class NetSuiteClient {
              item.itemId AS partNumber,
              transactionLine.item AS internalId,
              BUILTIN.DF(transactionLine.item) AS itemName,
+             item.custitem1 AS partGroupId,
+             BUILTIN.DF(item.custitem1) AS partGroupName,
              transactionLine.quantity AS qty,
              transactionLine.amount,
              transactionLine.rate,

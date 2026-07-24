@@ -28,6 +28,7 @@ let geoData = null;
 let markerLayers = { quoted: null, direct: null, open: null, lost: null, pending: null };
 let activeLayers = { quoted: true, direct: true, open: true, lost: true, pending: true };
 let activeYears = {};
+let activePartGroups = {}; // { "Signs & Bases": true, ... } — empty = show all
 let currentListTransactions = [];
 let lastViewedLayer = null;
 
@@ -134,6 +135,7 @@ async function loadData() {
     document.getElementById('loadingIndicator').style.display = 'none';
 
     buildYearButtons();
+    buildPartGroupButtons();
     buildMarkers();
     updateMap();
   } catch (e) {
@@ -212,6 +214,102 @@ function updateYearDropdownLabel() {
   }
 }
 
+// ── Dynamic Part Group Dropdown (multi-select with checkboxes) ──
+// Collects distinct partGroup display values across all loaded transactions.
+// Items missing partGroup are bucketed under "(no group)" so the count is
+// visible but the user can leave it off if they want to focus on categorized
+// items only.
+function buildPartGroupButtons() {
+  const groups = new Set();
+  let anyMissing = false;
+  for (const txn of allTransactions) {
+    const items = txn.items || [];
+    for (const it of items) {
+      const g = (it && it.partGroup ? String(it.partGroup) : '').trim();
+      if (g) groups.add(g);
+      else anyMissing = true;
+    }
+  }
+  const sorted = [...groups].sort((a, b) => a.localeCompare(b));
+  if (anyMissing) sorted.push('(no group)');
+
+  const menu = document.getElementById('partGroupDropdownMenu');
+  if (!menu) return;
+  menu.innerHTML = '';
+  activePartGroups = {};
+
+  const toggleLi = document.createElement('li');
+  toggleLi.innerHTML = `<a class="dropdown-item small" href="#" id="partGroupToggleAll"><strong>Select All</strong></a>`;
+  menu.appendChild(toggleLi);
+  const divider = document.createElement('li');
+  divider.innerHTML = '<hr class="dropdown-divider my-1">';
+  menu.appendChild(divider);
+
+  for (const g of sorted) {
+    activePartGroups[g] = true;
+    const li = document.createElement('li');
+    const safe = g.replace(/"/g, '&quot;');
+    li.innerHTML = `<label class="dropdown-item small d-flex align-items-center gap-2 mb-0" style="cursor:pointer;">
+      <input type="checkbox" class="form-check-input partgroup-checkbox" value="${safe}" checked> ${g}
+    </label>`;
+    menu.appendChild(li);
+  }
+
+  menu.querySelectorAll('.partgroup-checkbox').forEach(cb => {
+    cb.addEventListener('change', () => {
+      activePartGroups[cb.value] = cb.checked;
+      updatePartGroupDropdownLabel();
+      updateMap();
+    });
+  });
+
+  document.getElementById('partGroupToggleAll').addEventListener('click', (e) => {
+    e.preventDefault();
+    const allChecked = Object.values(activePartGroups).every(v => v);
+    const newState = !allChecked;
+    menu.querySelectorAll('.partgroup-checkbox').forEach(cb => {
+      cb.checked = newState;
+      activePartGroups[cb.value] = newState;
+    });
+    updatePartGroupDropdownLabel();
+    updateMap();
+  });
+
+  updatePartGroupDropdownLabel();
+}
+
+function updatePartGroupDropdownLabel() {
+  const btn = document.getElementById('partGroupDropdownBtn');
+  if (!btn) return;
+  const all = Object.keys(activePartGroups);
+  const selected = all.filter(g => activePartGroups[g]);
+  if (all.length === 0)              btn.textContent = 'All Groups';
+  else if (selected.length === 0)    btn.textContent = 'No Groups';
+  else if (selected.length === all.length) btn.textContent = 'All Groups';
+  else if (selected.length === 1)    btn.textContent = selected[0];
+  else                               btn.textContent = selected.length + ' Groups';
+}
+
+// True if the txn has ≥1 item whose partGroup (or "(no group)" placeholder)
+// is currently enabled in the filter. Returns true when no groups are loaded
+// yet (initial render before the dropdown is built).
+function txnMatchesPartGroups(txn) {
+  const keys = Object.keys(activePartGroups);
+  if (keys.length === 0) return true;
+  const anySelected = keys.some(k => activePartGroups[k]);
+  if (!anySelected) return false;
+  const items = txn.items || [];
+  if (items.length === 0) {
+    return !!activePartGroups['(no group)'];
+  }
+  for (const it of items) {
+    const g = (it && it.partGroup ? String(it.partGroup) : '').trim();
+    const bucket = g || '(no group)';
+    if (activePartGroups[bucket]) return true;
+  }
+  return false;
+}
+
 function getTransactionYear(txn) {
   if (!txn.date) return null;
   const parts = txn.date.split('/');
@@ -228,6 +326,7 @@ function getFilteredTransactions() {
       const year = getTransactionYear(t);
       if (year && !activeYears[String(year)]) return false;
     }
+    if (!txnMatchesPartGroups(t)) return false;
     return true;
   });
 }
@@ -286,6 +385,8 @@ function buildMarkers() {
  */
 function updateMap() {
   const anyYearActive = Object.values(activeYears).some(v => v);
+  const partGroupKeys = Object.keys(activePartGroups);
+  const anyPartGroupActive = partGroupKeys.length > 0 && partGroupKeys.some(k => activePartGroups[k]);
 
   for (const layerName of Object.keys(markerLayers)) {
     markerLayers[layerName].clearLayers();
@@ -297,7 +398,16 @@ function updateMap() {
 
     for (const [year, markers] of Object.entries(yearBuckets)) {
       if (anyYearActive && year !== 'unknown' && !activeYears[year]) continue;
-      markersToAdd.push(...markers);
+      // Part-group filter — evaluated per marker since a bucket can span
+      // multiple groups. Skipped when no part-groups are loaded yet (initial
+      // render before buildPartGroupButtons has run).
+      if (partGroupKeys.length === 0) {
+        markersToAdd.push(...markers);
+      } else if (anyPartGroupActive) {
+        for (const m of markers) {
+          if (m._txnData && txnMatchesPartGroups(m._txnData)) markersToAdd.push(m);
+        }
+      }
     }
 
     if (markersToAdd.length > 0) {

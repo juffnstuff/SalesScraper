@@ -72,7 +72,11 @@ async function main() {
         description: item.description || item.displayname || item.itemName || '',
         qty: parseInt(item.qty || item.quantity) || 0,
         amount: parseFloat(item.amount) || 0,
-        rate: item.rate || ''
+        rate: item.rate || '',
+        // NetSuite custom Part Group field (item.custitem1). partGroupId is
+        // the internal record ref, partGroup is the human-readable display.
+        partGroupId: String(item.partGroupId || item.partgroupid || ''),
+        partGroup: item.partGroupName || item.partgroupname || ''
       });
     }
     return map;
