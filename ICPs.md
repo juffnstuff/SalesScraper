@@ -1,6 +1,6 @@
 # RubberForm Sales Rep ICPs
 
-_Generated 2026-05-14 from `config/icps/*.json`._
+_Generated 2026-07-24 from `config/icps/*.json`._
 
 ICPs are derived by `src/discovery/icp_engine.js` from each rep's NetSuite
 transaction history and Outlook email patterns, then cached for 30 days. To
@@ -13,7 +13,7 @@ node prospect.js --rep <rep_id> --refresh-icp
 ## Reps
 
 - [Galen Reich](#galen-reich)
-- [Andrew Gibson](#andrew-gibson)
+- [John Liberti](#john-liberti)
 - [Nick Zielinski](#nick-zielinski)
 - [Brad Backman](#brad-backman)
 - [Bill Robbins](#bill-robbins)
@@ -138,11 +138,11 @@ AL, AK, AZ, AR, CA, CO, CT, DE, DC, FL, GA, HI, ID, IL, IN, IA, KS, KY, LA, ME, 
 
 ---
 
-## Andrew Gibson
+## John Liberti
 
 | Field | Value |
 |---|---|
-| Rep ID | `andrew_gibson` |
+| Rep ID | `john_liberti` |
 | Territory | National |
 | Verticals | construction |
 | Deal size | $250 – $175,473 (sweet spot $3,800) |
@@ -381,7 +381,7 @@ AL, AK, AZ, AR, CA, CO, CT, DE, DC, FL, GA, HI, ID, IL, IN, IA, KS, KY, LA, ME, 
 |---|---|
 | Rep ID | `brad_backman` |
 | Territory | National |
-| Verticals | parking |
+| Verticals | parking, municipal |
 | Deal size | $100 – $31,028 (sweet spot $1,900) |
 | ICP generated | 2026-04-06 |
 

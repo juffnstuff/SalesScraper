@@ -19,6 +19,19 @@
     "title": "Senior Account Manager",
     "territory": "National",
     "segment": "Construction / Retail / Reseller",
+    "verticals": ["construction"],
+    "inactive": true,
+    "successorRepId": "john_liberti"
+  },
+  {
+    "id": "john_liberti",
+    "name": "John Liberti",
+    "email": "john@rubberform.com",
+    "netsuiteId": 0,
+    "hubspotOwnerId": 0,
+    "title": "Senior Account Manager",
+    "territory": "National",
+    "segment": "Construction / Retail / Reseller",
     "verticals": ["construction"]
   },
   {
@@ -38,10 +51,10 @@
     "email": "bradb@rubberform.com",
     "netsuiteId": 443337,
     "hubspotOwnerId": 78347095,
-    "title": "Parking Lot Safety Product Specialist",
+    "title": "Parking & Government Sales Specialist",
     "territory": "National",
-    "segment": "Parking Safety / Reseller / E-Commerce",
-    "verticals": ["parking"]
+    "segment": "Parking Safety / Government / Public Sector / Reseller / E-Commerce",
+    "verticals": ["parking", "municipal"]
   },
   {
     "id": "bill_robbins",

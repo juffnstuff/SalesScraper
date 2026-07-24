@@ -331,7 +331,10 @@ app.post('/change-password', async (req, res) => {
 // ── Dashboard ──
 app.get('/', ensureAuth, (req, res) => {
   const reps = loadReps();
-  let visibleReps = reps;
+  // Hide reps flagged inactive (retired / departed). The record stays in
+  // rep_profiles.json so historical NetSuite transactions still resolve to a
+  // name via the netsuiteId lookup — we just don't show a card for them.
+  let visibleReps = reps.filter(r => !r.inactive);
 
   // Sales reps see only their own profile
   if (req.user.role === 'sales_rep' && req.user.repId) {

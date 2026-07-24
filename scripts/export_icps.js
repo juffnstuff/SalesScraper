@@ -107,11 +107,21 @@ ${bullets(icp.searchQueries)}
 function main() {
   const reps = loadReps();
   const repsById = Object.fromEntries(reps.map(r => [r.id, r]));
-  const icps = loadIcps();
+  const inactiveIds = new Set(reps.filter(r => r.inactive).map(r => r.id));
+  let icps = loadIcps();
 
   if (icps.length === 0) {
     console.error('No ICPs found under config/icps/. Run prospect.js to generate them first.');
     process.exit(1);
+  }
+
+  // Skip ICPs whose rep is flagged inactive in rep_profiles.json — the file
+  // stays on disk so historical NetSuite→rep name mapping keeps working, but
+  // the exported doc reflects the current active team.
+  const skipped = icps.filter(i => inactiveIds.has(i.repId)).map(i => i.repName || i.repId);
+  icps = icps.filter(i => !inactiveIds.has(i.repId));
+  if (skipped.length > 0) {
+    console.log(`Skipping inactive reps: ${skipped.join(', ')}`);
   }
 
   // Sort: follow rep_profiles.json order if present, otherwise alphabetical.
