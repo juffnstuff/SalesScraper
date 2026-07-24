@@ -909,6 +909,55 @@ app.get('/reports', ensureAuth, (req, res) => {
   });
 });
 
+// ── Part Group ID → name lookup (NetSuite item.custitem1) ──
+// Loaded once at boot, refreshed by scripts/refresh_part_groups.js.
+// Falls back to an empty object if the file is missing so the sales map
+// still functions (dropdown will show raw IDs as it did pre-lookup).
+let PART_GROUP_LOOKUP = {};
+try {
+  const pgPath = path.join(__dirname, '../../config/part_groups.json');
+  if (fs.existsSync(pgPath)) {
+    const parsed = JSON.parse(fs.readFileSync(pgPath, 'utf8'));
+    PART_GROUP_LOOKUP = parsed.groups || {};
+    console.log(`[server.js] Loaded ${Object.keys(PART_GROUP_LOOKUP).length} part group name mappings`);
+  }
+} catch (e) {
+  console.warn('[server.js] Could not load config/part_groups.json:', e.message);
+}
+
+// Attach human-readable partGroup names to each item in a transaction. Items
+// are stored with either `partGroup` (legacy: raw NetSuite ID string) or
+// `partGroupId` + `partGroup` (post-rescrape: id + display). We normalize to
+// always output `partGroup` = display name, `partGroupId` = raw id, using the
+// lookup table when only the id is available.
+function attachPartGroupNames(transactions) {
+  if (!transactions || !Array.isArray(transactions)) return transactions;
+  for (const txn of transactions) {
+    const items = txn.items;
+    if (!Array.isArray(items)) continue;
+    for (const it of items) {
+      if (!it || typeof it !== 'object') continue;
+      // Legacy shape: partGroup holds the raw ID (e.g. "2"). Post-rescrape:
+      // partGroup holds the display name and partGroupId holds the id.
+      const rawId = it.partGroupId ? String(it.partGroupId).trim() : '';
+      const currentPg = it.partGroup ? String(it.partGroup).trim() : '';
+      // Treat pure-numeric partGroup values as ids that need lookup.
+      const legacyIdInPartGroup = /^\d+$/.test(currentPg) ? currentPg : '';
+      const idForLookup = rawId || legacyIdInPartGroup;
+      const looked = idForLookup ? PART_GROUP_LOOKUP[idForLookup] : '';
+      if (looked) {
+        it.partGroupId = idForLookup;
+        it.partGroup = looked;
+      } else if (!it.partGroupId && legacyIdInPartGroup) {
+        // Best-effort: at least surface the id in the dedicated field so the
+        // frontend can distinguish "has id, unknown name" from "no group at all".
+        it.partGroupId = legacyIdInPartGroup;
+      }
+    }
+  }
+  return transactions;
+}
+
 // ── Sales Map page ──
 app.get('/salesmap', ensureAuth, (req, res) => {
   const reps = loadReps();
@@ -1072,6 +1121,7 @@ app.get('/api/salesmap-data', ensureAuth, async (req, res) => {
     totalLostValue: lost.reduce((s, t) => s + t.total, 0)
   };
 
+  attachPartGroupNames(transactions);
   res.json({ transactions, summary });
 });
 
