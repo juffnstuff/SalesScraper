@@ -244,12 +244,28 @@ app.get('/login', (req, res) => {
   res.render('login', { error: req.query.error || null, MS365_ENABLED });
 });
 
+// Best-effort request IP extraction — trusts the first X-Forwarded-For hop
+// since we set trust proxy = 1 for Railway; falls back to socket address.
+function clientIp(req) {
+  const xff = req.headers['x-forwarded-for'];
+  if (xff) return String(xff).split(',')[0].trim();
+  return req.ip || req.socket?.remoteAddress || '';
+}
+
+// Fire-and-forget last-login stamp; login must not block on DB write.
+function stampLastLogin(username, req) {
+  const ip = clientIp(req);
+  dataLayer.updateUser(username, { lastLogin: new Date(), lastLoginIp: ip })
+    .catch(e => console.warn(`[auth] Could not stamp last_login for ${username}: ${e.message}`));
+}
+
 app.post('/login', (req, res, next) => {
   passport.authenticate('local', (err, user, info) => {
     if (err) return next(err);
     if (!user) return res.redirect('/login?error=' + encodeURIComponent(info?.message || 'Login failed'));
     req.logIn(user, (err) => {
       if (err) return next(err);
+      stampLastLogin(user.username, req);
       if (user.mustChangePassword) return res.redirect('/change-password');
       res.redirect('/');
     });
@@ -264,6 +280,7 @@ if (MS365_ENABLED) {
       if (!user) return res.redirect('/login?error=' + encodeURIComponent(info?.message || 'Microsoft sign-in failed'));
       req.logIn(user, (err) => {
         if (err) return next(err);
+        stampLastLogin(user.username, req);
         res.redirect('/');
       });
     })(req, res, next);
@@ -326,6 +343,166 @@ app.post('/change-password', async (req, res) => {
   req.user.mustChangePassword = false;
 
   res.redirect('/change-password?success=' + encodeURIComponent('Password changed successfully'));
+});
+
+// ── Admin: User Management ──
+
+const VALID_ROLES = new Set(['admin', 'sales_rep', 'viewer']);
+const bcryptForAdmin = require('bcryptjs');
+
+// Generate a memorable temporary password. Format: 3 random adjective/noun-ish
+// words joined by hyphens + a 2-digit suffix, e.g. "amber-otter-fox-42". The
+// admin sees this once and hands it to the user; user is force-changed on
+// first login. Not for long-term use, so the corpus doesn't need to be huge.
+const TEMP_PW_WORDS = [
+  'amber','arch','birch','black','blue','bold','cedar','clear','crisp','dawn',
+  'delta','deep','draft','eagle','ember','falcon','field','flint','forest','fox',
+  'frost','gale','gold','gray','harbor','iron','ivory','jet','june','lark',
+  'lime','maple','mist','moss','north','oak','olive','otter','pine','plum',
+  'quiet','raven','reef','river','rust','sage','silver','slate','south','spark',
+  'stone','swift','tall','teal','thorn','tide','vale','vine','walnut','willow'
+];
+function generateTempPassword() {
+  const pick = () => TEMP_PW_WORDS[Math.floor(Math.random() * TEMP_PW_WORDS.length)];
+  const suffix = String(10 + Math.floor(Math.random() * 90));
+  return `${pick()}-${pick()}-${pick()}-${suffix}`;
+}
+
+app.get('/admin/users', ensureAuth, ensureAdmin, (req, res) => {
+  res.render('admin', {
+    user: req.user || { name: 'Local User' },
+    title: 'Admin — Users',
+    reps: loadReps(),
+    MS365_ENABLED
+  });
+});
+
+app.get('/api/admin/users', ensureAuth, ensureAdmin, async (req, res) => {
+  try {
+    const users = await dataLayer.getUsers();
+    // Never send password hashes to the browser.
+    const safe = users.map(u => ({
+      username: u.username,
+      name: u.name,
+      email: u.email || '',
+      role: u.role,
+      repId: u.repId || '',
+      mustChangePassword: !!u.mustChangePassword,
+      lastLogin: u.lastLogin || null,
+      lastLoginIp: u.lastLoginIp || '',
+      createdAt: u.createdAt || null
+    }));
+    res.json({ success: true, users: safe });
+  } catch (e) {
+    res.json({ success: false, error: e.message, users: [] });
+  }
+});
+
+app.post('/api/admin/users', ensureAuth, ensureAdmin, async (req, res) => {
+  const { username, name, email, role, repId } = req.body || {};
+  if (!username || !name) return res.status(400).json({ success: false, error: 'username and name are required' });
+  const normalizedUsername = String(username).trim().toLowerCase();
+  if (!/^[a-z0-9._-]{2,32}$/.test(normalizedUsername)) {
+    return res.status(400).json({ success: false, error: 'Username must be 2-32 characters, lowercase letters/numbers/dot/underscore/hyphen only' });
+  }
+  const normalizedRole = role && VALID_ROLES.has(role) ? role : 'sales_rep';
+
+  try {
+    const existing = await dataLayer.getUsers();
+    if (existing.some(u => u.username === normalizedUsername)) {
+      return res.status(409).json({ success: false, error: 'A user with that username already exists' });
+    }
+    const tempPassword = generateTempPassword();
+    const passwordHash = await bcryptForAdmin.hash(tempPassword, 10);
+    await dataLayer.createUser({
+      username: normalizedUsername,
+      passwordHash,
+      name: String(name).trim(),
+      email: (email || '').trim(),
+      role: normalizedRole,
+      repId: (repId || '').trim() || null,
+      mustChangePassword: true
+    });
+    console.log(`[admin] ${req.user.username} created user "${normalizedUsername}" (role=${normalizedRole})`);
+    // The temp password is returned ONCE to the calling admin. Never logged.
+    res.json({ success: true, username: normalizedUsername, tempPassword });
+  } catch (e) {
+    console.error('[admin] Create user failed:', e.message);
+    res.json({ success: false, error: e.message });
+  }
+});
+
+app.patch('/api/admin/users/:username', ensureAuth, ensureAdmin, async (req, res) => {
+  const target = String(req.params.username || '').toLowerCase();
+  const { name, email, role, repId } = req.body || {};
+  const updates = {};
+  if (name !== undefined) updates.name = String(name).trim();
+  if (email !== undefined) updates.email = String(email).trim();
+  if (repId !== undefined) updates.repId = repId ? String(repId).trim() : null;
+  if (role !== undefined) {
+    if (!VALID_ROLES.has(role)) return res.status(400).json({ success: false, error: `Invalid role. Must be one of: ${[...VALID_ROLES].join(', ')}` });
+    updates.role = role;
+  }
+  if (Object.keys(updates).length === 0) {
+    return res.status(400).json({ success: false, error: 'No editable fields provided' });
+  }
+
+  try {
+    // Prevent removing the last admin's admin role.
+    if (updates.role && updates.role !== 'admin') {
+      const users = await dataLayer.getUsers();
+      const admins = users.filter(u => u.role === 'admin');
+      if (admins.length === 1 && admins[0].username === target) {
+        return res.status(400).json({ success: false, error: 'Cannot demote the last admin — promote another user first.' });
+      }
+    }
+    await dataLayer.updateUser(target, updates);
+    console.log(`[admin] ${req.user.username} edited user "${target}": ${Object.keys(updates).join(', ')}`);
+    res.json({ success: true });
+  } catch (e) {
+    res.json({ success: false, error: e.message });
+  }
+});
+
+app.post('/api/admin/users/:username/reset-password', ensureAuth, ensureAdmin, async (req, res) => {
+  const target = String(req.params.username || '').toLowerCase();
+  try {
+    const users = await dataLayer.getUsers();
+    const found = users.find(u => u.username === target);
+    if (!found) return res.status(404).json({ success: false, error: 'User not found' });
+
+    const tempPassword = generateTempPassword();
+    const passwordHash = await bcryptForAdmin.hash(tempPassword, 10);
+    await dataLayer.updateUser(target, { passwordHash, mustChangePassword: true });
+    console.log(`[admin] ${req.user.username} reset password for "${target}"`);
+    // Temp password returned ONCE to the admin. Not logged.
+    res.json({ success: true, username: target, tempPassword });
+  } catch (e) {
+    res.json({ success: false, error: e.message });
+  }
+});
+
+app.delete('/api/admin/users/:username', ensureAuth, ensureAdmin, async (req, res) => {
+  const target = String(req.params.username || '').toLowerCase();
+  if (target === (req.user.username || '').toLowerCase()) {
+    return res.status(400).json({ success: false, error: 'You cannot delete your own account.' });
+  }
+  try {
+    const users = await dataLayer.getUsers();
+    const found = users.find(u => u.username === target);
+    if (!found) return res.status(404).json({ success: false, error: 'User not found' });
+    if (found.role === 'admin') {
+      const admins = users.filter(u => u.role === 'admin');
+      if (admins.length === 1) {
+        return res.status(400).json({ success: false, error: 'Cannot delete the last admin.' });
+      }
+    }
+    await dataLayer.deleteUser(target);
+    console.log(`[admin] ${req.user.username} deleted user "${target}"`);
+    res.json({ success: true });
+  } catch (e) {
+    res.json({ success: false, error: e.message });
+  }
 });
 
 // ── Dashboard ──

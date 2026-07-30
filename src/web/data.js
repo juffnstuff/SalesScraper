@@ -384,6 +384,8 @@ async function getUsers() {
       role: r.role,
       repId: r.rep_id,
       mustChangePassword: r.must_change_password,
+      lastLogin: r.last_login,
+      lastLoginIp: r.last_login_ip || '',
       createdAt: r.created_at
     }));
   }
@@ -424,6 +426,12 @@ async function updateUser(username, updates) {
 
     if (updates.passwordHash !== undefined) { sets.push(`password_hash = $${i++}`); params.push(updates.passwordHash); }
     if (updates.mustChangePassword !== undefined) { sets.push(`must_change_password = $${i++}`); params.push(updates.mustChangePassword); }
+    if (updates.name !== undefined)  { sets.push(`name = $${i++}`);  params.push(updates.name); }
+    if (updates.email !== undefined) { sets.push(`email = $${i++}`); params.push(updates.email); }
+    if (updates.role !== undefined)  { sets.push(`role = $${i++}`);  params.push(updates.role); }
+    if (updates.repId !== undefined) { sets.push(`rep_id = $${i++}`); params.push(updates.repId || null); }
+    if (updates.lastLogin !== undefined)   { sets.push(`last_login = $${i++}`);    params.push(updates.lastLogin); }
+    if (updates.lastLoginIp !== undefined) { sets.push(`last_login_ip = $${i++}`); params.push(updates.lastLoginIp || ''); }
 
     if (sets.length === 0) return;
     params.push(username);
@@ -438,6 +446,45 @@ async function updateUser(username, updates) {
     Object.assign(user, updates);
     fs.writeFileSync(USERS_PATH, JSON.stringify(users, null, 2));
   }
+}
+
+async function createUser(user) {
+  const record = {
+    username: user.username,
+    passwordHash: user.passwordHash,
+    name: user.name,
+    email: user.email || '',
+    role: user.role || 'sales_rep',
+    repId: user.repId || null,
+    mustChangePassword: user.mustChangePassword !== false
+  };
+  if (await db.isReady()) {
+    await db.query(`
+      INSERT INTO users (username, password_hash, name, email, role, rep_id, must_change_password)
+      VALUES ($1,$2,$3,$4,$5,$6,$7)
+    `, [record.username, record.passwordHash, record.name, record.email, record.role, record.repId, record.mustChangePassword]);
+    return;
+  }
+  // JSON fallback
+  let users = [];
+  try { users = JSON.parse(fs.readFileSync(USERS_PATH, 'utf8')); } catch { users = []; }
+  if (users.some(u => u.username === record.username)) {
+    throw new Error(`User "${record.username}" already exists`);
+  }
+  users.push(record);
+  fs.writeFileSync(USERS_PATH, JSON.stringify(users, null, 2));
+}
+
+async function deleteUser(username) {
+  if (await db.isReady()) {
+    await db.query('DELETE FROM users WHERE username = $1', [username]);
+    return;
+  }
+  // JSON fallback
+  let users = [];
+  try { users = JSON.parse(fs.readFileSync(USERS_PATH, 'utf8')); } catch { return; }
+  const filtered = users.filter(u => u.username !== username);
+  fs.writeFileSync(USERS_PATH, JSON.stringify(filtered, null, 2));
 }
 
 // ── Projects for Rep (filtered by vertical overlap) ──
@@ -774,7 +821,7 @@ async function getListsForContact(contactId) {
 
 module.exports = {
   getProjects, mergeProjects, findProject, saveContractors,
-  getTransactions, getUsers, saveUsers, updateUser,
+  getTransactions, getUsers, saveUsers, updateUser, createUser, deleteUser,
   getProjectsForRep, getContractorsForProject,
   saveContacts, getContactsForProject, markContactPushed, assignContactRep,
   getLists, createList, deleteList, getListById,

@@ -186,6 +186,8 @@ CREATE TABLE IF NOT EXISTS users (
   role TEXT DEFAULT 'sales_rep',
   rep_id TEXT,
   must_change_password BOOLEAN DEFAULT TRUE,
+  last_login TIMESTAMPTZ,
+  last_login_ip TEXT DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -414,6 +416,10 @@ async function reclassifyVerticals() {
   await pool.query('ALTER TABLE transactions ADD COLUMN IF NOT EXISTS lng NUMERIC');
   // had_quote flag: true if this sales order originated from an estimate
   await pool.query('ALTER TABLE transactions ADD COLUMN IF NOT EXISTS had_quote BOOLEAN DEFAULT FALSE');
+
+  // User audit columns for the admin console.
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login TIMESTAMPTZ`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_ip TEXT DEFAULT ''`);
 
   // Apollo two-stage flow: search returns a person ID; enrichment uses it to
   // pull the real email/phone/last name. Both columns are nullable / empty

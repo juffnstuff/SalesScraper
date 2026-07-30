@@ -51,6 +51,9 @@
       <li><a href="/salesmap" class="sidebar-link"><i class="bi bi-pin-map"></i><span>Sales Map</span></a></li>
       <li><a href="/lists" class="sidebar-link"><i class="bi bi-collection"></i><span>Lists</span></a></li>
       <li><a href="/reports" class="sidebar-link"><i class="bi bi-bar-chart"></i><span>Reports</span></a></li>
+      <% if (typeof user !== 'undefined' && user && user.role === 'admin') { %>
+        <li><a href="/admin/users" class="sidebar-link"><i class="bi bi-shield-lock"></i><span>Admin</span></a></li>
+      <% } %>
     </ul>
     <div class="sidebar-footer">
       <% if (typeof user !== 'undefined' && user) { %>
