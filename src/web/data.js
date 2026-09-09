@@ -60,6 +60,7 @@ async function getProjects(cutoffDate) {
       notes: r.notes,
       contractors: contractorMap[r.id] || [],
       contractorSearched: r.contractor_searched,
+      scannedAt: r.scanned_at,
       _dbId: r.id
     }));
   }

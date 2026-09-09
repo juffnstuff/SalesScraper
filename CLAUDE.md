@@ -29,7 +29,35 @@ src/
   ui/
     cli_display.js           ← Terminal UI with chalk
     reporter.js              ← Run logs and summary reports
+  web/
+    server.js                ← Express web app (MS365 / local login, EJS views)
+    mcp_api.js               ← Read-only /api/mcp/* family for rf-business-mcp (RF-MCP)
+    data.js                  ← Postgres data layer with JSON fallback
+    netsuite_sync.js         ← NetSuite → Postgres transaction sync
 ```
+
+## MCP API (`/api/mcp/*`)
+
+Read-only, GET-only family consumed by the RF-MCP aggregator (`rf-business-mcp`),
+gated by `Authorization: Bearer $SALESSCRAPER_MCP_API_KEY` (same convention as
+DSOATD / QMS / Production Tracker). Unset key = 503. Nothing under this prefix
+can start a Claude scan, spend an Apollo credit, or push to HubSpot.
+
+| Route | Returns |
+|---|---|
+| `GET /api/mcp/ping` | key check + db readiness |
+| `GET /api/mcp/summary` | reps, ICP freshness, heat-map counts, lists, NetSuite sync, last run |
+| `GET /api/mcp/reps?includeInactive=` | rep profiles and vertical routing |
+| `GET /api/mcp/icp/:repId` | full ICP JSON for one rep |
+| `GET /api/mcp/projects?days&state&vertical&status&minValue&q&limit` | heat-map projects + rollups |
+| `GET /api/mcp/projects/:id` | one project with contractors + contacts (Postgres only) |
+| `GET /api/mcp/rep-projects/:repId?state&limit` | projects matching a rep's verticals |
+| `GET /api/mcp/contacts/:projectId` | decision-maker contacts found for a project |
+| `GET /api/mcp/lists`, `GET /api/mcp/lists/:id` | contact lists and members |
+| `GET /api/mcp/run-logs?repId&limit` | recent prospecting runs |
+| `GET /api/mcp/netsuite-sync-status` | last NetSuite sync outcome |
+| `GET /api/mcp/sales-summary?repId&days&state&layer&type&customer` | sales-map rollups (financial) |
+| `GET /api/mcp/sales-transactions?…&limit&includeItems` | sales-map rows (financial) |
 
 ## Sales Reps (from Step 1 Discovery)
 

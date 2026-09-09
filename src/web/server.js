@@ -1177,11 +1177,10 @@ app.get('/api/netsuite-sync-status', ensureAuth, async (req, res) => {
   }
 });
 
-// ── API: Sales Map Data (reads from PostgreSQL, falls back to JSON) ──
-app.get('/api/salesmap-data', ensureAuth, async (req, res) => {
-  const daysParam = req.query.days;
-  const days = daysParam != null && daysParam !== '' ? parseInt(daysParam) : 730;
-  const repId = req.query.repId || '';
+// ── Sales Map data builder (reads from PostgreSQL, falls back to JSON) ──
+// Shared by the web UI (/api/salesmap-data) and the read-only MCP family
+// (/api/mcp/sales-*). repId '' = all reps; days 0 = no date cutoff.
+async function buildSalesMapData(repId, days) {
   const reps = loadReps();
 
   // Build rep lookup for display names
@@ -1299,7 +1298,19 @@ app.get('/api/salesmap-data', ensureAuth, async (req, res) => {
   };
 
   attachPartGroupNames(transactions);
-  res.json({ transactions, summary });
+  return { transactions, summary };
+}
+
+app.get('/api/salesmap-data', ensureAuth, async (req, res) => {
+  const daysParam = req.query.days;
+  const days = daysParam != null && daysParam !== '' ? parseInt(daysParam) : 730;
+  const repId = req.query.repId || '';
+  try {
+    res.json(await buildSalesMapData(repId, days));
+  } catch (e) {
+    console.error('[API] Sales map data failed:', e.message);
+    res.status(500).json({ transactions: [], summary: { total: 0 }, error: e.message });
+  }
 });
 
 // ── Heat Map page ──
@@ -1925,6 +1936,12 @@ function startWorkdayNetSuiteScheduler() {
 }
 
 // ── ICP detail ──
+// ── Read-only MCP API family for rf-business-mcp (bearer SALESSCRAPER_MCP_API_KEY) ──
+// GET-only by construction; see src/web/mcp_api.js. Nothing under /api/mcp
+// can scan, enrich, or push — those stay human-driven in the UI.
+const { createMcpRouter } = require('./mcp_api');
+app.use('/api/mcp', createMcpRouter({ loadReps, loadICP, loadRunLogs, buildSalesMapData }));
+
 app.get('/icp/:repId', ensureAuth, (req, res) => {
   const reps = loadReps();
   const rep = reps.find(r => r.id === req.params.repId);
