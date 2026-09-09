@@ -35,6 +35,14 @@ const PORT = process.env.PORT || 3000;
 // ── Production proxy (Railway, Render, etc.) ──
 app.set('trust proxy', 1);
 
+// ── Health check (Railway healthcheckPath) ──
+// Unauthenticated and registered BEFORE the session middleware so it never
+// mints a cookie. Must answer 200: `/` redirects to /login (302), which
+// Railway counts as a failed check and rolls the deploy back.
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', service: 'salesscraper', time: new Date().toISOString() });
+});
+
 // ── View engine ──
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
